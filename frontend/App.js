@@ -2,11 +2,12 @@ import { StatusBar } from 'expo-status-bar';
 import { useEffect, useMemo, useState } from 'react';
 import {
   ActivityIndicator, Image, Pressable, RefreshControl, SafeAreaView, ScrollView,
-  StyleSheet, Text, TextInput, TouchableOpacity, View,
+  StyleSheet, Text, TextInput, TouchableOpacity, View, Dimensions, Modal
 } from 'react-native';
 import { Inter_400Regular, Inter_500Medium, Inter_600SemiBold, Inter_700Bold, Inter_800ExtraBold, useFonts } from '@expo-google-fonts/inter';
 import { LinearGradient } from 'expo-linear-gradient';
-import { Home, CreditCard, Calculator, MessageCircle, ShieldCheck, Wallet, Banknote, LogOut, RefreshCw, User, Send, ChevronRight, TrendingUp, Clock, CheckCircle2, XCircle, BarChart3, Users, FileText } from 'lucide-react-native';
+import { Home, CreditCard, Calculator, MessageCircle, ShieldCheck, Wallet, Banknote, LogOut, RefreshCw, User, Send, ChevronRight, TrendingUp, Clock, CheckCircle2, XCircle, BarChart3, Users, FileText, Search, Filter } from 'lucide-react-native';
+import { PieChart, BarChart } from 'react-native-chart-kit';
 import { apiRequest } from './src/api';
 import { COLORS, FONTS, RADIUS, SHADOW, SPACING } from './src/theme';
 import { StatusBadge, EmptyState, BottomTabBar, KpiCard, SectionCard, SectionTitle, PrimaryButton, SecondaryButton, InputLabel, ChatBubble } from './src/components';
@@ -45,6 +46,10 @@ export default function App() {
   const [editingCreditTypeId, setEditingCreditTypeId] = useState(null);
   const [editingRate, setEditingRate] = useState('');
   const [editingIsActive, setEditingIsActive] = useState(true);
+  const [adminSearchQuery, setAdminSearchQuery] = useState('');
+  const [adminStatusFilter, setAdminStatusFilter] = useState('all');
+  const [adminSelectedRequest, setAdminSelectedRequest] = useState(null);
+  const [adminRejectionReason, setAdminRejectionReason] = useState('');
 
   const isAuthenticated = Boolean(token && user);
   const isAdmin = user?.role === 'admin';
@@ -73,7 +78,7 @@ export default function App() {
     if (!n || !e || !password) { setError('Nom, email et mot de passe obligatoires.'); return; }
     try {
       setError(''); setNotice(''); setIsAuthBusy(true);
-      const r = await apiRequest('/auth/register', { method: 'POST', body: JSON.stringify({ fullName: n, email: e, password, salary: Number(salary||0), balance: Number(balance||0) }) });
+      const r = await apiRequest('/auth/register', { method: 'POST', body: JSON.stringify({ fullName: n, email: e, password, salary: Number(salary || 0), balance: Number(balance || 0) }) });
       setToken(r.token); setUser(r.user); setView(r.user.role === 'admin' ? 'admin' : 'dashboard'); setNotice('Compte créé avec succès !');
     } catch (err) { setError(err.message || 'Inscription impossible.'); } finally { setIsAuthBusy(false); }
   }
@@ -107,7 +112,8 @@ export default function App() {
 
   async function onEstimate() {
     const ve = validateSim(); if (ve) { setError(ve); return; }
-    try { setError(''); setNotice(''); setIsActionBusy(true);
+    try {
+      setError(''); setNotice(''); setIsActionBusy(true);
       const sal = Number(dashboard?.client?.salary || user?.salary || 0);
       const r = await apiRequest('/estimation', { method: 'POST', body: JSON.stringify({ creditTypeId: Number(selectedCreditTypeId), amount: Number(amount), durationMonths: Number(durationMonths), salary: sal }) }, token);
       setEstimationResult(r); setNotice('Estimation calculée !');
@@ -116,7 +122,8 @@ export default function App() {
 
   async function onSubmitRequest() {
     const ve = validateSim(); if (ve) { setError(ve); return; }
-    try { setError(''); setNotice(''); setIsActionBusy(true);
+    try {
+      setError(''); setNotice(''); setIsActionBusy(true);
       await apiRequest('/requests', { method: 'POST', body: JSON.stringify({ creditTypeId: Number(selectedCreditTypeId), requestedAmount: Number(amount), requestedDurationMonths: Number(durationMonths) }) }, token);
       await loadInitialData(); setView('dashboard'); setNotice('Demande soumise avec succès !');
     } catch (e) { setError(e.message || 'Envoi impossible.'); } finally { setIsActionBusy(false); }
@@ -125,21 +132,26 @@ export default function App() {
   async function onChat() {
     const q = chatQuestion.trim(); if (!q) { setError('Écris une question.'); return; }
     setChatMessages((p) => [...p, { text: q, isUser: true }]); setChatQuestion('');
-    try { setError(''); setIsActionBusy(true);
+    try {
+      setError(''); setIsActionBusy(true);
       const r = await apiRequest('/chatbot', { method: 'POST', body: JSON.stringify({ message: q }) }, token);
       setChatMessages((p) => [...p, { text: r.answer || 'Aucune réponse.', isUser: false }]);
     } catch (e) { setChatMessages((p) => [...p, { text: 'Erreur: ' + (e.message || 'Chatbot indisponible.'), isUser: false }]); } finally { setIsActionBusy(false); }
   }
 
-  async function onUpdateRequestStatus(id, status) {
-    try { setError(''); setNotice(''); setIsActionBusy(true);
-      await apiRequest(`/admin/requests/${id}/status`, { method: 'PATCH', body: JSON.stringify({ status }) }, token);
-      await loadInitialData(); setView('admin'); setNotice('Statut mis à jour.');
+  async function onUpdateRequestStatus(id, status, adminComment = '') {
+    try {
+      setError(''); setNotice(''); setIsActionBusy(true);
+      await apiRequest(`/admin/requests/${id}/status`, { method: 'PATCH', body: JSON.stringify({ status, adminComment }) }, token);
+      await loadInitialData();
+      setAdminSelectedRequest(null);
+      setNotice('Statut mis à jour.');
     } catch (e) { setError(e.message || 'Mise à jour impossible.'); } finally { setIsActionBusy(false); }
   }
 
   async function onUpdateCreditType(id) {
-    try { setError(''); setNotice(''); setIsActionBusy(true);
+    try {
+      setError(''); setNotice(''); setIsActionBusy(true);
       await apiRequest(`/admin/credit-types/${id}`, { method: 'PATCH', body: JSON.stringify({ annualRate: Number(editingRate), isActive: editingIsActive }) }, token);
       setEditingCreditTypeId(null);
       await loadInitialData(); setNotice('Type de crédit mis à jour.');
@@ -164,7 +176,7 @@ export default function App() {
         <View style={s.splash}>
           <LinearGradient colors={[COLORS.gradientStart, COLORS.gradientEnd]} style={s.splashGrad}>
             <Image source={ATB_LOGO} style={s.splashLogo} resizeMode="contain" />
-            <Text style={s.splashTitle}>Iram</Text>
+            <Text style={s.splashTitle}>ATB</Text>
             <Text style={s.splashSub}>Mobile Banking</Text>
             <ActivityIndicator color={COLORS.white} size="large" style={{ marginTop: 24 }} />
           </LinearGradient>
@@ -181,7 +193,7 @@ export default function App() {
         <ScrollView contentContainerStyle={s.authWrap} keyboardShouldPersistTaps="handled">
           <View style={s.authHeader}>
             <Image source={ATB_LOGO} style={s.authLogo} resizeMode="contain" />
-            <Text style={s.authTitle}>Iram</Text>
+            <Text style={s.authTitle}>ATB</Text>
             <Text style={s.authSubtitle}>Votre espace bancaire intelligent</Text>
           </View>
 
@@ -222,6 +234,12 @@ export default function App() {
   // ─── MAIN APP ───
   const loans = dashboard?.loans || [];
   const requests = dashboard?.requests || [];
+
+  const filteredAdminRequests = adminRequests.filter((r) => {
+    const searchMatch = (r.User?.fullName || '').toLowerCase().includes(adminSearchQuery.toLowerCase());
+    const statusMatch = adminStatusFilter === 'all' || r.status === adminStatusFilter;
+    return searchMatch && statusMatch;
+  });
 
   return (
     <SafeAreaView style={s.safe}>
@@ -369,34 +387,78 @@ export default function App() {
             <SectionCard>
               <SectionTitle>Vue analytique</SectionTitle>
               {adminSummary ? (
-                <View style={s.adminGrid}>
-                  <KpiCard icon={FileText} label="Total demandes" value={adminSummary.totalRequests} color={COLORS.primary} />
-                  <KpiCard icon={Clock} label="En attente" value={adminSummary.pendingRequests} color={COLORS.warning} />
-                  <KpiCard icon={CheckCircle2} label="Acceptées" value={adminSummary.acceptedRequests} color={COLORS.success} />
-                  <KpiCard icon={XCircle} label="Refusées" value={adminSummary.rejectedRequests} color={COLORS.error} />
-                  <KpiCard icon={TrendingUp} label="Taux" value={formatPercent(adminSummary.acceptanceRate)} color={COLORS.success} />
-                  <KpiCard icon={Banknote} label="Montant total" value={formatMoney(adminSummary.totalRequested)} color={COLORS.secondary} />
-                </View>
+                <>
+                  <View style={s.adminGrid}>
+                    <KpiCard icon={FileText} label="Total demandes" value={adminSummary.totalRequests} color={COLORS.primary} />
+                    <KpiCard icon={Clock} label="En attente" value={adminSummary.pendingRequests} color={COLORS.warning} />
+                    <KpiCard icon={CheckCircle2} label="Acceptées" value={adminSummary.acceptedRequests} color={COLORS.success} />
+                    <KpiCard icon={XCircle} label="Refusées" value={adminSummary.rejectedRequests} color={COLORS.error} />
+                    <KpiCard icon={TrendingUp} label="Taux" value={formatPercent(adminSummary.acceptanceRate)} color={COLORS.success} />
+                    <KpiCard icon={Banknote} label="Montant total" value={formatMoney(adminSummary.totalRequested)} color={COLORS.secondary} />
+                  </View>
+                  <View style={{ flexDirection: 'row', flexWrap: 'wrap', marginTop: 16 }}>
+                    <View style={{ flex: 1, minWidth: 250, alignItems: 'center' }}>
+                      <Text style={{ fontFamily: FONTS.semiBold, marginBottom: 8 }}>Répartition des demandes</Text>
+                      <PieChart
+                        data={[
+                          { name: 'En attente', count: adminSummary.pendingRequests, color: COLORS.warning, legendFontColor: '#7A7A7A', legendFontSize: 12 },
+                          { name: 'Acceptées', count: adminSummary.acceptedRequests, color: COLORS.success, legendFontColor: '#7A7A7A', legendFontSize: 12 },
+                          { name: 'Refusées', count: adminSummary.rejectedRequests, color: COLORS.error, legendFontColor: '#7A7A7A', legendFontSize: 12 },
+                        ]}
+                        width={Dimensions.get('window').width < 600 ? Dimensions.get('window').width - 64 : 300}
+                        height={180}
+                        chartConfig={{ color: () => COLORS.primary }}
+                        accessor="count"
+                        backgroundColor="transparent"
+                        paddingLeft="15"
+                        absolute
+                      />
+                    </View>
+                  </View>
+                </>
               ) : <EmptyState icon="📊" title="Pas de stats" description="Ajoutez des demandes." />}
             </SectionCard>
 
             <SectionCard>
               <SectionTitle>Gestion des demandes</SectionTitle>
-              {adminRequests.length === 0 ? <EmptyState icon="📋" title="Aucune demande" description="Les demandes apparaîtront ici." /> : adminRequests.map((r) => (
-                <View style={s.listItem} key={r.id}>
+
+              <View style={{ marginBottom: 16 }}>
+                <View style={[s.input, { flexDirection: 'row', alignItems: 'center', marginBottom: 12 }]}>
+                  <Search size={20} color={COLORS.textLight} />
+                  <TextInput
+                    style={{ flex: 1, marginLeft: 8, outlineStyle: 'none' }}
+                    placeholder="Rechercher par nom..."
+                    value={adminSearchQuery}
+                    onChangeText={setAdminSearchQuery}
+                  />
+                </View>
+
+                <View style={{ flexDirection: 'row', gap: 8, flexWrap: 'wrap' }}>
+                  {['all', 'pending', 'accepted', 'rejected'].map(status => (
+                    <TouchableOpacity
+                      key={status}
+                      style={[s.filterChip, adminStatusFilter === status && s.filterChipActive]}
+                      onPress={() => setAdminStatusFilter(status)}
+                    >
+                      <Text style={[s.filterChipText, adminStatusFilter === status && s.filterChipTextActive]}>
+                        {status === 'all' ? 'Toutes' : status === 'pending' ? 'En attente' : status === 'accepted' ? 'Acceptées' : 'Refusées'}
+                      </Text>
+                    </TouchableOpacity>
+                  ))}
+                </View>
+              </View>
+
+              {filteredAdminRequests.length === 0 ? <EmptyState icon="📋" title="Aucune demande" description="Aucune demande ne correspond aux critères." /> : filteredAdminRequests.map((r) => (
+                <TouchableOpacity style={s.listItem} key={r.id} onPress={() => setAdminSelectedRequest(r)}>
                   <View style={s.listItemHead}><Text style={s.listItemTitle}>{r.User?.fullName || 'Client'}</Text><StatusBadge status={r.status} /></View>
                   <Text style={s.listItemSub}>{r.CreditType?.name || 'Type'} – {formatMoney(r.requestedAmount)} • {r.requestedDurationMonths} mois</Text>
-                  <View style={s.adminActions}>
-                    <TouchableOpacity style={[s.adminBtn, { backgroundColor: COLORS.warning }]} onPress={() => onUpdateRequestStatus(r.id, 'pending')} disabled={isActionBusy}><Text style={s.adminBtnText}>En attente</Text></TouchableOpacity>
-                    <TouchableOpacity style={[s.adminBtn, { backgroundColor: COLORS.success }]} onPress={() => onUpdateRequestStatus(r.id, 'accepted')} disabled={isActionBusy}><Text style={s.adminBtnText}>Accepter</Text></TouchableOpacity>
-                    <TouchableOpacity style={[s.adminBtn, { backgroundColor: COLORS.error }]} onPress={() => onUpdateRequestStatus(r.id, 'rejected')} disabled={isActionBusy}><Text style={s.adminBtnText}>Refuser</Text></TouchableOpacity>
-                  </View>
-                </View>
+                  <Text style={[s.listItemSub, { marginTop: 4, color: COLORS.primary }]}>Voir les détails {'>'}</Text>
+                </TouchableOpacity>
               ))}
             </SectionCard>
           </>
         )}
-        
+
         {isAdmin && view === 'admin' && (
           <SectionCard>
             <SectionTitle>Offres de crédit</SectionTitle>
@@ -417,7 +479,7 @@ export default function App() {
                       </View>
                     </View>
                     <View style={s.adminActions}>
-                      <TouchableOpacity style={[s.adminBtn, { backgroundColor: COLORS.primary, flex: 1 }]} onPress={() => onUpdateCreditType(ct.id)} disabled={isActionBusy}><Text style={[s.adminBtnText, {textAlign:'center'}]}>Enregistrer</Text></TouchableOpacity>
+                      <TouchableOpacity style={[s.adminBtn, { backgroundColor: COLORS.primary, flex: 1 }]} onPress={() => onUpdateCreditType(ct.id)} disabled={isActionBusy}><Text style={[s.adminBtnText, { textAlign: 'center' }]}>Enregistrer</Text></TouchableOpacity>
                       <TouchableOpacity style={[s.adminBtn, { backgroundColor: COLORS.textSecondary }]} onPress={() => setEditingCreditTypeId(null)}><Text style={s.adminBtnText}>Annuler</Text></TouchableOpacity>
                     </View>
                   </View>
@@ -440,6 +502,55 @@ export default function App() {
           </SectionCard>
         )}
       </ScrollView>
+
+      {/* ── MODAL DETAIL DOSSIER ── */}
+      {adminSelectedRequest && (
+        <Modal transparent animationType="fade" visible={true} onRequestClose={() => setAdminSelectedRequest(null)}>
+          <View style={s.modalOverlay}>
+            <View style={s.modalContent}>
+              <View style={s.modalHeader}>
+                <Text style={s.modalTitle}>Détail du Dossier</Text>
+                <TouchableOpacity onPress={() => setAdminSelectedRequest(null)}><XCircle size={24} color={COLORS.textLight} /></TouchableOpacity>
+              </View>
+              <ScrollView style={{ padding: SPACING.lg, maxHeight: Dimensions.get('window').height * 0.7 }}>
+                <SectionTitle>Informations Client</SectionTitle>
+                <View style={[s.resultRow, { marginBottom: 4 }]}><Text style={s.resultLabel}>Nom</Text><Text style={s.resultValue}>{adminSelectedRequest.User?.fullName}</Text></View>
+                <View style={[s.resultRow, { marginBottom: 4 }]}><Text style={s.resultLabel}>Email</Text><Text style={s.resultValue}>{adminSelectedRequest.User?.email}</Text></View>
+                <View style={[s.resultRow, { marginBottom: 16 }]}><Text style={s.resultLabel}>Salaire</Text><Text style={s.resultValue}>{formatMoney(adminSelectedRequest.salaryAtRequest || adminSelectedRequest.User?.salary)}</Text></View>
+
+                <SectionTitle>Détails du Crédit</SectionTitle>
+                <View style={[s.resultRow, { marginBottom: 4 }]}><Text style={s.resultLabel}>Type</Text><Text style={s.resultValue}>{adminSelectedRequest.CreditType?.name}</Text></View>
+                <View style={[s.resultRow, { marginBottom: 4 }]}><Text style={s.resultLabel}>Montant demandé</Text><Text style={s.resultValue}>{formatMoney(adminSelectedRequest.requestedAmount)}</Text></View>
+                <View style={[s.resultRow, { marginBottom: 4 }]}><Text style={s.resultLabel}>Durée</Text><Text style={s.resultValue}>{adminSelectedRequest.requestedDurationMonths} mois</Text></View>
+                <View style={[s.resultRow, { marginBottom: 16 }]}><Text style={s.resultLabel}>Probabilité IA</Text><Text style={s.resultValue}>{formatPercent(adminSelectedRequest.acceptanceProbability)}</Text></View>
+
+                <SectionTitle>Scoring et Décision</SectionTitle>
+                <View style={[s.resultRow, { marginBottom: 16 }]}>
+                  <Text style={s.resultLabel}>Ratio d'endettement estimé</Text>
+                  <Text style={[s.resultValue, { color: adminSelectedRequest.debtRatio < 0.35 ? COLORS.success : adminSelectedRequest.debtRatio <= 0.45 ? COLORS.warning : COLORS.error }]}>
+                    {formatPercent(adminSelectedRequest.debtRatio || 0)}
+                    {adminSelectedRequest.debtRatio < 0.35 ? ' 🟢 Faible' : adminSelectedRequest.debtRatio <= 0.45 ? ' 🟡 Moyen' : ' 🔴 Risqué'}
+                  </Text>
+                </View>
+
+                {adminSelectedRequest.status === 'pending' && (
+                  <View style={{ gap: 12 }}>
+                    <PrimaryButton label="✔ Accepter le crédit" onPress={() => onUpdateRequestStatus(adminSelectedRequest.id, 'accepted')} disabled={isActionBusy} />
+                    <View style={{ borderTopWidth: 1, borderColor: COLORS.border, paddingTop: 12 }}>
+                      <InputLabel>Motif de refus (optionnel)</InputLabel>
+                      <TextInput style={s.input} value={adminRejectionReason} onChangeText={setAdminRejectionReason} placeholder="Ex: Ratio d'endettement trop élevé" />
+                      <SecondaryButton label="✖ Refuser le crédit" onPress={() => onUpdateRequestStatus(adminSelectedRequest.id, 'rejected', adminRejectionReason)} disabled={isActionBusy} />
+                    </View>
+                  </View>
+                )}
+                {adminSelectedRequest.status !== 'pending' && (
+                  <View style={s.noticeBanner}><CheckCircle2 size={16} color={COLORS.primary} /><Text style={s.noticeText}>Dossier clôturé ({adminSelectedRequest.status})</Text></View>
+                )}
+              </ScrollView>
+            </View>
+          </View>
+        </Modal>
+      )}
 
       <BottomTabBar tabs={isAdmin ? tabsAdmin : tabsClient} active={view} onPress={setView} />
       <StatusBar style="dark" />
@@ -530,4 +641,12 @@ const s = StyleSheet.create({
   adminActions: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 8 },
   adminBtn: { borderRadius: RADIUS.sm, paddingVertical: 8, paddingHorizontal: 12 },
   adminBtnText: { color: COLORS.white, fontFamily: FONTS.bold, fontSize: 12 },
+  modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'center', alignItems: 'center' },
+  modalContent: { backgroundColor: COLORS.white, width: '90%', maxWidth: 500, borderRadius: RADIUS.xl, overflow: 'hidden' },
+  modalHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', padding: SPACING.lg, borderBottomWidth: 1, borderColor: COLORS.border },
+  modalTitle: { fontFamily: FONTS.bold, fontSize: 18, color: COLORS.primaryDark },
+  filterChip: { paddingHorizontal: 16, paddingVertical: 8, borderRadius: 20, backgroundColor: COLORS.surface, borderWidth: 1, borderColor: COLORS.border },
+  filterChipActive: { backgroundColor: COLORS.primary, borderColor: COLORS.primary },
+  filterChipText: { fontFamily: FONTS.medium, fontSize: 13, color: COLORS.textLight },
+  filterChipTextActive: { color: COLORS.white },
 });

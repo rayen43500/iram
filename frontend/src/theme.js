@@ -1,4 +1,4 @@
-// Iram Design System — ATB Red Visual Identity
+// Design System — ATB Red Visual Identity
 export const COLORS = {
   primary: '#A6192E',
   primaryDark: '#7A1021',
