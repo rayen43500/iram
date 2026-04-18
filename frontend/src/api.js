@@ -8,6 +8,10 @@ const platformBaseUrl = Platform.select({
 export const API_BASE_URL = process.env.EXPO_PUBLIC_API_BASE_URL || platformBaseUrl;
 
 async function apiRequest(path, options = {}, token) {
+  const controller = new AbortController();
+  const timeoutMs = 12000;
+  const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
+
   const headers = {
     'Content-Type': 'application/json',
     ...(options.headers || {}),
@@ -17,18 +21,35 @@ async function apiRequest(path, options = {}, token) {
     headers.Authorization = `Bearer ${token}`;
   }
 
-  const response = await fetch(`${API_BASE_URL}${path}`, {
-    ...options,
-    headers,
-  });
+  try {
+    const response = await fetch(`${API_BASE_URL}${path}`, {
+      ...options,
+      headers,
+      signal: controller.signal,
+    });
 
-  const data = await response.json().catch(() => ({}));
-  if (!response.ok) {
-    const message = data.message || 'Erreur API';
-    throw new Error(message);
+    const text = await response.text();
+    const data = text ? JSON.parse(text) : {};
+
+    if (!response.ok) {
+      const message = data.message || `Erreur API (${response.status})`;
+      throw new Error(message);
+    }
+
+    return data;
+  } catch (error) {
+    if (error.name === 'AbortError') {
+      throw new Error('Le serveur met trop de temps a repondre.');
+    }
+
+    if (error instanceof SyntaxError) {
+      throw new Error('Reponse serveur invalide.');
+    }
+
+    throw error;
+  } finally {
+    clearTimeout(timeoutId);
   }
-
-  return data;
 }
 
 export { apiRequest };

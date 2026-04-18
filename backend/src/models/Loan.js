@@ -1,21 +1,27 @@
-const mongoose = require('mongoose');
+const { DataTypes } = require('sequelize');
+const { sequelize } = require('../config/sequelize');
 
-const loanSchema = new mongoose.Schema(
+const Loan = sequelize.define(
+  'Loan',
   {
-    user: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
-    creditType: { type: mongoose.Schema.Types.ObjectId, ref: 'CreditType', required: true },
-    amount: { type: Number, required: true },
-    durationMonths: { type: Number, required: true },
-    annualRate: { type: Number, required: true },
-    monthlyPayment: { type: Number, required: true },
-    remainingInstallments: { type: Number, required: true },
+    id: { type: DataTypes.INTEGER.UNSIGNED, autoIncrement: true, primaryKey: true },
+    userId: { type: DataTypes.INTEGER.UNSIGNED, allowNull: false },
+    creditTypeId: { type: DataTypes.INTEGER.UNSIGNED, allowNull: false },
+    amount: { type: DataTypes.FLOAT, allowNull: false },
+    durationMonths: { type: DataTypes.INTEGER, allowNull: false },
+    annualRate: { type: DataTypes.FLOAT, allowNull: false },
+    monthlyPayment: { type: DataTypes.FLOAT, allowNull: false },
+    remainingInstallments: { type: DataTypes.INTEGER, allowNull: false },
     status: {
-      type: String,
-      enum: ['active', 'paid', 'late'],
-      default: 'active',
+      type: DataTypes.ENUM('active', 'paid', 'late'),
+      allowNull: false,
+      defaultValue: 'active',
     },
   },
-  { timestamps: true }
+  {
+    tableName: 'loans',
+    timestamps: true,
+  }
 );
 
-module.exports = mongoose.model('Loan', loanSchema);
+module.exports = Loan;

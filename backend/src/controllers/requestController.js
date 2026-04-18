@@ -22,7 +22,7 @@ async function createRequest(req, res) {
     return res.status(400).json({ message: 'requestedAmount et requestedDurationMonths doivent etre > 0' });
   }
 
-  const creditType = await CreditType.findById(creditTypeId).lean();
+  const creditType = await CreditType.findByPk(creditTypeId);
   if (!creditType || !creditType.isActive) {
     return res.status(404).json({ message: 'Type de credit introuvable' });
   }
@@ -39,16 +39,18 @@ async function createRequest(req, res) {
   }
 
   const pendingRequest = await CreditRequest.findOne({
-    user: req.user._id,
-    creditType: creditType._id,
-    status: 'pending',
-  }).lean();
+    where: {
+      userId: req.user.id,
+      creditTypeId: creditType.id,
+      status: 'pending',
+    },
+  });
 
   if (pendingRequest) {
     return res.status(409).json({ message: 'Une demande en attente existe deja pour ce type de credit' });
   }
 
-  const currentLoans = await Loan.find({ user: req.user._id, status: 'active' }).lean();
+  const currentLoans = await Loan.findAll({ where: { userId: req.user.id, status: 'active' } });
   const existingMonthlyDebt = currentLoans.reduce((sum, loan) => sum + loan.monthlyPayment, 0);
 
   const estimation = buildEstimation({
@@ -61,8 +63,8 @@ async function createRequest(req, res) {
   });
 
   const created = await CreditRequest.create({
-    user: req.user._id,
-    creditType: creditType._id,
+    userId: req.user.id,
+    creditTypeId: creditType.id,
     requestedAmount: normalizedAmount,
     requestedDurationMonths: normalizedDuration,
     salaryAtRequest: Number(req.user.salary || 0),
@@ -77,7 +79,11 @@ async function createRequest(req, res) {
 }
 
 async function listMyRequests(req, res) {
-  const items = await CreditRequest.find({ user: req.user._id }).sort({ createdAt: -1 }).populate('creditType', 'name slug').lean();
+  const items = await CreditRequest.findAll({
+    where: { userId: req.user.id },
+    order: [['createdAt', 'DESC']],
+    include: [{ model: CreditType, attributes: ['id', 'name', 'slug'] }],
+  });
   return res.json(items);
 }
 

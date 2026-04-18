@@ -11,13 +11,13 @@ async function authRequired(req, res, next) {
   try {
     const token = header.replace('Bearer ', '').trim();
     const payload = jwt.verify(token, env.jwtSecret);
-    const user = await User.findById(payload.sub).lean();
+    const user = await User.findByPk(payload.sub);
 
     if (!user) {
       return res.status(401).json({ message: 'Utilisateur introuvable' });
     }
 
-    req.user = user;
+    req.user = user.toJSON();
     return next();
   } catch (error) {
     return res.status(401).json({ message: 'Token invalide' });

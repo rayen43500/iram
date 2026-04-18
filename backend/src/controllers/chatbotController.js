@@ -12,7 +12,10 @@ async function chat(req, res) {
   }
 
   if (text.includes('etat') || text.includes('statut')) {
-    const lastRequest = await CreditRequest.findOne({ user: req.user._id }).sort({ createdAt: -1 }).lean();
+    const lastRequest = await CreditRequest.findOne({
+      where: { userId: req.user.id },
+      order: [['createdAt', 'DESC']],
+    });
     if (!lastRequest) {
       return res.json({ answer: 'Aucune demande trouvee pour le moment.', intent: 'request_status' });
     }

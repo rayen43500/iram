@@ -1,9 +1,17 @@
 const CreditType = require('../models/CreditType');
 const CreditRequest = require('../models/CreditRequest');
 const Loan = require('../models/Loan');
+const User = require('../models/User');
+const { fn, col } = require('sequelize');
 
 async function listAllRequests(req, res) {
-  const items = await CreditRequest.find().sort({ createdAt: -1 }).populate('user', 'fullName email').populate('creditType', 'name slug annualRate').lean();
+  const items = await CreditRequest.findAll({
+    order: [['createdAt', 'DESC']],
+    include: [
+      { model: User, attributes: ['id', 'fullName', 'email'] },
+      { model: CreditType, attributes: ['id', 'name', 'slug', 'annualRate'] },
+    ],
+  });
   return res.json(items);
 }
 
@@ -13,47 +21,47 @@ async function updateRequestStatus(req, res) {
     return res.status(400).json({ message: 'Status invalide' });
   }
 
-  const request = await CreditRequest.findById(req.params.id).populate('creditType').lean();
+  const request = await CreditRequest.findByPk(req.params.id, { include: [{ model: CreditType }] });
   if (!request) {
     return res.status(404).json({ message: 'Demande introuvable' });
   }
 
   if (request.status === status && status === 'accepted') {
     const existingLoan = await Loan.findOne({
-      user: request.user,
-      creditType: request.creditType._id,
+      where: {
+      userId: request.userId,
+      creditTypeId: request.creditTypeId,
       amount: request.requestedAmount,
       durationMonths: request.requestedDurationMonths,
       status: 'active',
-    }).lean();
+      },
+    });
 
     if (existingLoan) {
       return res.status(409).json({ message: 'Cette demande est deja acceptee et le credit est deja genere' });
     }
   }
 
-  const updated = await CreditRequest.findByIdAndUpdate(
-    req.params.id,
-    { status, adminComment },
-    { new: true }
-  );
+  await request.update({ status, adminComment });
 
   if (status === 'accepted') {
     const existingLoan = await Loan.findOne({
-      user: request.user,
-      creditType: request.creditType._id,
+      where: {
+      userId: request.userId,
+      creditTypeId: request.creditTypeId,
       amount: request.requestedAmount,
       durationMonths: request.requestedDurationMonths,
       status: 'active',
-    }).lean();
+      },
+    });
 
     if (!existingLoan) {
     await Loan.create({
-      user: request.user,
-      creditType: request.creditType._id,
+      userId: request.userId,
+      creditTypeId: request.creditTypeId,
       amount: request.requestedAmount,
       durationMonths: request.requestedDurationMonths,
-      annualRate: request.creditType.annualRate,
+      annualRate: request.CreditType.annualRate,
       monthlyPayment: request.estimatedMonthlyPayment,
       remainingInstallments: request.requestedDurationMonths,
       status: 'active',
@@ -61,7 +69,7 @@ async function updateRequestStatus(req, res) {
     }
   }
 
-  return res.json(updated);
+  return res.json(request);
 }
 
 async function createCreditType(req, res) {
@@ -71,19 +79,17 @@ async function createCreditType(req, res) {
 
 async function analyticsSummary(req, res) {
   const [totalRequests, acceptedRequests, rejectedRequests, pendingRequests, amountStats] = await Promise.all([
-    CreditRequest.countDocuments(),
-    CreditRequest.countDocuments({ status: 'accepted' }),
-    CreditRequest.countDocuments({ status: 'rejected' }),
-    CreditRequest.countDocuments({ status: 'pending' }),
-    CreditRequest.aggregate([
-      {
-        $group: {
-          _id: null,
-          totalRequested: { $sum: '$requestedAmount' },
-          avgRequested: { $avg: '$requestedAmount' },
-        },
-      },
-    ]),
+    CreditRequest.count(),
+    CreditRequest.count({ where: { status: 'accepted' } }),
+    CreditRequest.count({ where: { status: 'rejected' } }),
+    CreditRequest.count({ where: { status: 'pending' } }),
+    CreditRequest.findOne({
+      attributes: [
+        [fn('COALESCE', fn('SUM', col('requestedAmount')), 0), 'totalRequested'],
+        [fn('COALESCE', fn('AVG', col('requestedAmount')), 0), 'avgRequested'],
+      ],
+      raw: true,
+    }),
   ]);
 
   const acceptanceRate = totalRequests > 0 ? acceptedRequests / totalRequests : 0;
@@ -94,13 +100,18 @@ async function analyticsSummary(req, res) {
     rejectedRequests,
     pendingRequests,
     acceptanceRate: Number(acceptanceRate.toFixed(4)),
-    totalRequested: Number((amountStats[0]?.totalRequested || 0).toFixed(2)),
-    avgRequested: Number((amountStats[0]?.avgRequested || 0).toFixed(2)),
+    totalRequested: Number(Number(amountStats?.totalRequested || 0).toFixed(2)),
+    avgRequested: Number(Number(amountStats?.avgRequested || 0).toFixed(2)),
   });
 }
 
 async function updateCreditType(req, res) {
-  const updated = await CreditType.findByIdAndUpdate(req.params.id, req.body, { new: true, runValidators: true });
+  const creditType = await CreditType.findByPk(req.params.id);
+  if (!creditType) {
+    return res.status(404).json({ message: 'Type de credit introuvable' });
+  }
+
+  const updated = await creditType.update(req.body);
   if (!updated) {
     return res.status(404).json({ message: 'Type de credit introuvable' });
   }

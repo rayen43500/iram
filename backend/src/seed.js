@@ -7,16 +7,9 @@ const Loan = require('./models/Loan');
 const CreditRequest = require('./models/CreditRequest');
 
 async function run() {
-  await connectDb();
+  await connectDb({ forceSync: true });
 
-  await Promise.all([
-    CreditType.deleteMany({}),
-    User.deleteMany({}),
-    Loan.deleteMany({}),
-    CreditRequest.deleteMany({}),
-  ]);
-
-  const creditTypes = await CreditType.insertMany([
+  const creditTypes = await CreditType.bulkCreate([
     {
       name: 'Credit personnel',
       slug: 'credit-personnel',
@@ -82,8 +75,8 @@ async function run() {
     const monthlyPayment = Number((amount / duration).toFixed(2));
 
     await Loan.create({
-      user: client._id,
-      creditType: type._id,
+      userId: client.id,
+      creditTypeId: type.id,
       amount,
       durationMonths: duration,
       annualRate: type.annualRate,
@@ -93,8 +86,8 @@ async function run() {
     });
 
     await CreditRequest.create({
-      user: client._id,
-      creditType: type._id,
+      userId: client.id,
+      creditTypeId: type.id,
       requestedAmount: amount,
       requestedDurationMonths: duration,
       salaryAtRequest: client.salary,
@@ -116,3 +109,4 @@ run().catch((error) => {
   console.error(error);
   process.exit(1);
 });
+

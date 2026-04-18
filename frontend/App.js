@@ -1,799 +1,533 @@
 import { StatusBar } from 'expo-status-bar';
 import { useEffect, useMemo, useState } from 'react';
 import {
-  ActivityIndicator,
-  Image,
-  Pressable,
-  SafeAreaView,
-  ScrollView,
-  StyleSheet,
-  Text,
-  TextInput,
-  TouchableOpacity,
-  View,
+  ActivityIndicator, Image, Pressable, RefreshControl, SafeAreaView, ScrollView,
+  StyleSheet, Text, TextInput, TouchableOpacity, View,
 } from 'react-native';
-import {
-  Manrope_400Regular,
-  Manrope_500Medium,
-  Manrope_600SemiBold,
-  Manrope_700Bold,
-  Manrope_800ExtraBold,
-  useFonts,
-} from '@expo-google-fonts/manrope';
+import { Inter_400Regular, Inter_500Medium, Inter_600SemiBold, Inter_700Bold, Inter_800ExtraBold, useFonts } from '@expo-google-fonts/inter';
+import { LinearGradient } from 'expo-linear-gradient';
+import { Home, CreditCard, Calculator, MessageCircle, ShieldCheck, Wallet, Banknote, LogOut, RefreshCw, User, Send, ChevronRight, TrendingUp, Clock, CheckCircle2, XCircle, BarChart3, Users, FileText } from 'lucide-react-native';
 import { apiRequest } from './src/api';
+import { COLORS, FONTS, RADIUS, SHADOW, SPACING } from './src/theme';
+import { StatusBadge, EmptyState, BottomTabBar, KpiCard, SectionCard, SectionTitle, PrimaryButton, SecondaryButton, InputLabel, ChatBubble } from './src/components';
 
-const ATB_LOGO_URI = 'https://logo.clearbit.com/atb.com.tn';
+const ATB_LOGO = require('./assets/image.png');
+
+function formatMoney(v) { return `${Number(v || 0).toLocaleString('fr-FR', { maximumFractionDigits: 2 })} TND`; }
+function formatPercent(v) { const n = Number(v || 0) * (v <= 1 ? 100 : 1); return `${n.toFixed(1)}%`; }
 
 export default function App() {
-  const [fontsLoaded] = useFonts({
-    Manrope_400Regular,
-    Manrope_500Medium,
-    Manrope_600SemiBold,
-    Manrope_700Bold,
-    Manrope_800ExtraBold,
-  });
-
+  const [fontsLoaded] = useFonts({ Inter_400Regular, Inter_500Medium, Inter_600SemiBold, Inter_700Bold, Inter_800ExtraBold });
   const [token, setToken] = useState('');
   const [user, setUser] = useState(null);
   const [view, setView] = useState('dashboard');
   const [error, setError] = useState('');
-
+  const [notice, setNotice] = useState('');
   const [authMode, setAuthMode] = useState('login');
   const [fullName, setFullName] = useState('');
   const [email, setEmail] = useState('admin@bank.local');
   const [password, setPassword] = useState('Admin@1234');
   const [salary, setSalary] = useState('2500');
   const [balance, setBalance] = useState('1000');
-
   const [dashboard, setDashboard] = useState(null);
   const [creditTypes, setCreditTypes] = useState([]);
-
-  const [amount, setAmount] = useState('10000');
-  const [durationMonths, setDurationMonths] = useState('36');
-  const [selectedCreditTypeId, setSelectedCreditTypeId] = useState('');
-
-  const [estimationResult, setEstimationResult] = useState(null);
-  const [chatQuestion, setChatQuestion] = useState('Quels documents sont requis ?');
-  const [chatAnswer, setChatAnswer] = useState('');
   const [adminSummary, setAdminSummary] = useState(null);
   const [adminRequests, setAdminRequests] = useState([]);
+  const [selectedCreditTypeId, setSelectedCreditTypeId] = useState('');
+  const [amount, setAmount] = useState('10000');
+  const [durationMonths, setDurationMonths] = useState('36');
+  const [estimationResult, setEstimationResult] = useState(null);
+  const [chatMessages, setChatMessages] = useState([]);
+  const [chatQuestion, setChatQuestion] = useState('');
+  const [isLoadingData, setIsLoadingData] = useState(false);
+  const [isAuthBusy, setIsAuthBusy] = useState(false);
+  const [isActionBusy, setIsActionBusy] = useState(false);
+  const [editingCreditTypeId, setEditingCreditTypeId] = useState(null);
+  const [editingRate, setEditingRate] = useState('');
+  const [editingIsActive, setEditingIsActive] = useState(true);
 
   const isAuthenticated = Boolean(token && user);
   const isAdmin = user?.role === 'admin';
+  const selectedType = useMemo(() => creditTypes.find((i) => String(i.id) === String(selectedCreditTypeId)), [creditTypes, selectedCreditTypeId]);
 
-  const selectedType = useMemo(
-    () => creditTypes.find((item) => item._id === selectedCreditTypeId),
-    [creditTypes, selectedCreditTypeId]
-  );
+  useEffect(() => { if (isAuthenticated) loadInitialData(); }, [isAuthenticated]);
 
-  useEffect(() => {
-    if (!isAuthenticated) return;
-    loadInitialData();
-  }, [isAuthenticated]);
+  async function loadInitialData() {
+    try {
+      setError(''); setNotice(''); setIsLoadingData(true);
+      const [me, dashData, types] = await Promise.all([
+        apiRequest('/auth/me', {}, token), apiRequest('/credits/dashboard', {}, token), apiRequest('/credits/types', {}, token),
+      ]);
+      setUser(me); setDashboard(dashData); setCreditTypes(types);
+      if (types.length > 0) setSelectedCreditTypeId((c) => c || String(types[0].id));
+      if (me.role === 'admin') {
+        const [summary, reqs] = await Promise.all([apiRequest('/admin/analytics/summary', {}, token), apiRequest('/admin/requests', {}, token)]);
+        setAdminSummary(summary); setAdminRequests(reqs);
+      }
+    } catch (e) { setError(e.message || 'Erreur de chargement.'); }
+    finally { setIsLoadingData(false); }
+  }
 
+  async function onRegister() {
+    const n = fullName.trim(); const e = email.trim().toLowerCase();
+    if (!n || !e || !password) { setError('Nom, email et mot de passe obligatoires.'); return; }
+    try {
+      setError(''); setNotice(''); setIsAuthBusy(true);
+      const r = await apiRequest('/auth/register', { method: 'POST', body: JSON.stringify({ fullName: n, email: e, password, salary: Number(salary||0), balance: Number(balance||0) }) });
+      setToken(r.token); setUser(r.user); setView(r.user.role === 'admin' ? 'admin' : 'dashboard'); setNotice('Compte créé avec succès !');
+    } catch (err) { setError(err.message || 'Inscription impossible.'); } finally { setIsAuthBusy(false); }
+  }
+
+  async function onLogin() {
+    const e = email.trim().toLowerCase();
+    if (!e || !password) { setError('Email et mot de passe obligatoires.'); return; }
+    try {
+      setError(''); setNotice(''); setIsAuthBusy(true);
+      const r = await apiRequest('/auth/login', { method: 'POST', body: JSON.stringify({ email: e, password }) });
+      setToken(r.token); setUser(r.user); setView(r.user.role === 'admin' ? 'admin' : 'dashboard'); setNotice('Connexion réussie !');
+    } catch (err) { setError(err.message || 'Connexion impossible.'); } finally { setIsAuthBusy(false); }
+  }
+
+  function onLogout() {
+    setToken(''); setUser(null); setView('dashboard'); setDashboard(null); setCreditTypes([]);
+    setSelectedCreditTypeId(''); setEstimationResult(null); setChatMessages([]); setAdminSummary(null); setAdminRequests([]); setNotice(''); setError('');
+  }
+
+  function validateSim() {
+    if (!selectedCreditTypeId) return 'Sélectionne un type de crédit.';
+    const a = Number(amount), d = Number(durationMonths);
+    if (!Number.isFinite(a) || a <= 0) return 'Le montant doit être positif.';
+    if (!Number.isFinite(d) || d <= 0) return 'La durée doit être positive.';
+    if (selectedType) {
+      if (a < selectedType.minAmount || a > selectedType.maxAmount) return `Montant: ${selectedType.minAmount} – ${selectedType.maxAmount}`;
+      if (d < selectedType.minDurationMonths || d > selectedType.maxDurationMonths) return `Durée: ${selectedType.minDurationMonths} – ${selectedType.maxDurationMonths} mois`;
+    }
+    return '';
+  }
+
+  async function onEstimate() {
+    const ve = validateSim(); if (ve) { setError(ve); return; }
+    try { setError(''); setNotice(''); setIsActionBusy(true);
+      const sal = Number(dashboard?.client?.salary || user?.salary || 0);
+      const r = await apiRequest('/estimation', { method: 'POST', body: JSON.stringify({ creditTypeId: Number(selectedCreditTypeId), amount: Number(amount), durationMonths: Number(durationMonths), salary: sal }) }, token);
+      setEstimationResult(r); setNotice('Estimation calculée !');
+    } catch (e) { setError(e.message || 'Estimation impossible.'); } finally { setIsActionBusy(false); }
+  }
+
+  async function onSubmitRequest() {
+    const ve = validateSim(); if (ve) { setError(ve); return; }
+    try { setError(''); setNotice(''); setIsActionBusy(true);
+      await apiRequest('/requests', { method: 'POST', body: JSON.stringify({ creditTypeId: Number(selectedCreditTypeId), requestedAmount: Number(amount), requestedDurationMonths: Number(durationMonths) }) }, token);
+      await loadInitialData(); setView('dashboard'); setNotice('Demande soumise avec succès !');
+    } catch (e) { setError(e.message || 'Envoi impossible.'); } finally { setIsActionBusy(false); }
+  }
+
+  async function onChat() {
+    const q = chatQuestion.trim(); if (!q) { setError('Écris une question.'); return; }
+    setChatMessages((p) => [...p, { text: q, isUser: true }]); setChatQuestion('');
+    try { setError(''); setIsActionBusy(true);
+      const r = await apiRequest('/chatbot', { method: 'POST', body: JSON.stringify({ message: q }) }, token);
+      setChatMessages((p) => [...p, { text: r.answer || 'Aucune réponse.', isUser: false }]);
+    } catch (e) { setChatMessages((p) => [...p, { text: 'Erreur: ' + (e.message || 'Chatbot indisponible.'), isUser: false }]); } finally { setIsActionBusy(false); }
+  }
+
+  async function onUpdateRequestStatus(id, status) {
+    try { setError(''); setNotice(''); setIsActionBusy(true);
+      await apiRequest(`/admin/requests/${id}/status`, { method: 'PATCH', body: JSON.stringify({ status }) }, token);
+      await loadInitialData(); setView('admin'); setNotice('Statut mis à jour.');
+    } catch (e) { setError(e.message || 'Mise à jour impossible.'); } finally { setIsActionBusy(false); }
+  }
+
+  async function onUpdateCreditType(id) {
+    try { setError(''); setNotice(''); setIsActionBusy(true);
+      await apiRequest(`/admin/credit-types/${id}`, { method: 'PATCH', body: JSON.stringify({ annualRate: Number(editingRate), isActive: editingIsActive }) }, token);
+      setEditingCreditTypeId(null);
+      await loadInitialData(); setNotice('Type de crédit mis à jour.');
+    } catch (e) { setError(e.message || 'Mise à jour impossible.'); } finally { setIsActionBusy(false); }
+  }
+
+  const tabsClient = [
+    { key: 'dashboard', label: 'Accueil', icon: Home },
+    { key: 'credits', label: 'Crédits', icon: CreditCard },
+    { key: 'simulation', label: 'Simulation', icon: Calculator },
+    { key: 'chatbot', label: 'Assistant', icon: MessageCircle },
+  ];
+  const tabsAdmin = [
+    { key: 'admin', label: 'Dashboard', icon: ShieldCheck },
+    { key: 'chatbot', label: 'Assistant', icon: MessageCircle },
+  ];
+
+  // ─── SPLASH ───
   if (!fontsLoaded) {
     return (
-      <SafeAreaView style={styles.safeArea}>
-        <View style={styles.loadingWrap}>
-          <Image source={{ uri: ATB_LOGO_URI }} style={styles.brandLogo} resizeMode="contain" />
-          <ActivityIndicator size="large" color="#0f4a92" />
-          <Text style={styles.loadingText}>Chargement du style...</Text>
+      <SafeAreaView style={s.safe}>
+        <View style={s.splash}>
+          <LinearGradient colors={[COLORS.gradientStart, COLORS.gradientEnd]} style={s.splashGrad}>
+            <Image source={ATB_LOGO} style={s.splashLogo} resizeMode="contain" />
+            <Text style={s.splashTitle}>Iram</Text>
+            <Text style={s.splashSub}>Mobile Banking</Text>
+            <ActivityIndicator color={COLORS.white} size="large" style={{ marginTop: 24 }} />
+          </LinearGradient>
         </View>
+        <StatusBar style="light" />
       </SafeAreaView>
     );
   }
 
-  async function loadInitialData() {
-    try {
-      setError('');
-      const [me, dashboardData, types] = await Promise.all([
-        apiRequest('/auth/me', {}, token),
-        apiRequest('/credits/dashboard', {}, token),
-        apiRequest('/credits/types', {}, token),
-      ]);
-
-      setUser(me);
-      setDashboard(dashboardData);
-      setCreditTypes(types);
-
-      if (!selectedCreditTypeId && types.length > 0) {
-        setSelectedCreditTypeId(types[0]._id);
-      }
-
-      if (me.role === 'admin') {
-        const [summary, requests] = await Promise.all([
-          apiRequest('/admin/analytics/summary', {}, token),
-          apiRequest('/admin/requests', {}, token),
-        ]);
-        setAdminSummary(summary);
-        setAdminRequests(requests);
-      }
-    } catch (err) {
-      setError(err.message);
-    }
-  }
-
-  async function onRegister() {
-    try {
-      setError('');
-      const result = await apiRequest('/auth/register', {
-        method: 'POST',
-        body: JSON.stringify({
-          fullName,
-          email,
-          password,
-          salary: Number(salary),
-          balance: Number(balance),
-        }),
-      });
-
-      setToken(result.token);
-      setUser(result.user);
-      setAuthMode('login');
-    } catch (err) {
-      setError(err.message);
-    }
-  }
-
-  async function onLogin() {
-    try {
-      setError('');
-      const result = await apiRequest('/auth/login', {
-        method: 'POST',
-        body: JSON.stringify({ email, password }),
-      });
-
-      setToken(result.token);
-      setUser(result.user);
-    } catch (err) {
-      setError(err.message);
-    }
-  }
-
-  function onLogout() {
-    setToken('');
-    setUser(null);
-    setDashboard(null);
-    setAdminSummary(null);
-    setAdminRequests([]);
-    setEstimationResult(null);
-  }
-
-  async function onEstimate() {
-    try {
-      setError('');
-      const salary = dashboard?.client?.salary || user?.salary || 0;
-      const result = await apiRequest(
-        '/estimation',
-        {
-          method: 'POST',
-          body: JSON.stringify({
-            creditTypeId: selectedCreditTypeId,
-            amount: Number(amount),
-            durationMonths: Number(durationMonths),
-            salary: Number(salary),
-          }),
-        },
-        token
-      );
-
-      setEstimationResult(result);
-    } catch (err) {
-      setError(err.message);
-    }
-  }
-
-  async function onSubmitRequest() {
-    try {
-      setError('');
-      await apiRequest(
-        '/requests',
-        {
-          method: 'POST',
-          body: JSON.stringify({
-            creditTypeId: selectedCreditTypeId,
-            requestedAmount: Number(amount),
-            requestedDurationMonths: Number(durationMonths),
-          }),
-        },
-        token
-      );
-
-      await loadInitialData();
-      setView('dashboard');
-    } catch (err) {
-      setError(err.message);
-    }
-  }
-
-  async function onChat() {
-    try {
-      setError('');
-      const result = await apiRequest(
-        '/chatbot',
-        {
-          method: 'POST',
-          body: JSON.stringify({ message: chatQuestion }),
-        },
-        token
-      );
-      setChatAnswer(result.answer);
-    } catch (err) {
-      setError(err.message);
-    }
-  }
-
-  async function onUpdateRequestStatus(requestId, status) {
-    try {
-      setError('');
-      await apiRequest(
-        `/admin/requests/${requestId}/status`,
-        {
-          method: 'PATCH',
-          body: JSON.stringify({ status }),
-        },
-        token
-      );
-      await loadInitialData();
-      setView('admin');
-    } catch (err) {
-      setError(err.message);
-    }
-  }
-
-  function formatStatus(status) {
-    if (status === 'pending') return 'en attente';
-    if (status === 'accepted') return 'accepte';
-    if (status === 'rejected') return 'refuse';
-    return status;
-  }
-
+  // ─── AUTH ───
   if (!isAuthenticated) {
     return (
-      <SafeAreaView style={styles.safeArea}>
-        <View style={styles.decorTop} />
-        <View style={styles.decorBottom} />
-        <View style={styles.authContainer}>
-          <View style={styles.brandHero}>
-            <Image source={{ uri: ATB_LOGO_URI }} style={styles.brandLogo} resizeMode="contain" />
-            <View>
-              <Text style={styles.title}>ATB Credit Mobile</Text>
-              <Text style={styles.subtitle}>Espace securise clients et administration</Text>
+      <SafeAreaView style={s.safe}>
+        <ScrollView contentContainerStyle={s.authWrap} keyboardShouldPersistTaps="handled">
+          <View style={s.authHeader}>
+            <Image source={ATB_LOGO} style={s.authLogo} resizeMode="contain" />
+            <Text style={s.authTitle}>Iram</Text>
+            <Text style={s.authSubtitle}>Votre espace bancaire intelligent</Text>
+          </View>
+
+          <View style={s.authCard}>
+            <View style={s.authToggle}>
+              <Pressable style={[s.authToggleBtn, authMode === 'login' && s.authToggleBtnActive]} onPress={() => setAuthMode('login')}>
+                <Text style={[s.authToggleText, authMode === 'login' && s.authToggleTextActive]}>Connexion</Text>
+              </Pressable>
+              <Pressable style={[s.authToggleBtn, authMode === 'register' && s.authToggleBtnActive]} onPress={() => setAuthMode('register')}>
+                <Text style={[s.authToggleText, authMode === 'register' && s.authToggleTextActive]}>Inscription</Text>
+              </Pressable>
             </View>
+
+            {authMode === 'register' && (
+              <>
+                <TextInput style={s.input} value={fullName} onChangeText={setFullName} placeholder="Nom complet" placeholderTextColor={COLORS.textLight} />
+                <View style={s.rowInputs}>
+                  <TextInput style={[s.input, { flex: 1 }]} value={salary} onChangeText={setSalary} placeholder="Salaire" keyboardType="numeric" placeholderTextColor={COLORS.textLight} />
+                  <TextInput style={[s.input, { flex: 1 }]} value={balance} onChangeText={setBalance} placeholder="Solde" keyboardType="numeric" placeholderTextColor={COLORS.textLight} />
+                </View>
+              </>
+            )}
+            <TextInput style={s.input} value={email} onChangeText={setEmail} autoCapitalize="none" placeholder="Email" placeholderTextColor={COLORS.textLight} keyboardType="email-address" />
+            <TextInput style={s.input} value={password} onChangeText={setPassword} secureTextEntry placeholder="Mot de passe" placeholderTextColor={COLORS.textLight} />
+
+            <PrimaryButton label={authMode === 'login' ? 'Se connecter' : 'Créer le compte'} onPress={authMode === 'login' ? onLogin : onRegister} disabled={isAuthBusy} loading={isAuthBusy} />
+
+            <Text style={s.helper}>Comptes test : admin@bank.local / Admin@1234{'\n'}client1@bank.local / Client@1234</Text>
+            {notice ? <Text style={s.noticeText}>{notice}</Text> : null}
+            {error ? <Text style={s.errorText}>{error}</Text> : null}
           </View>
-
-          <View style={styles.authModeRow}>
-            <TouchableOpacity
-              style={[styles.authModeButton, authMode === 'login' && styles.authModeButtonActive]}
-              onPress={() => setAuthMode('login')}
-              activeOpacity={0.88}
-            >
-              <Text style={[styles.authModeText, authMode === 'login' && styles.authModeTextActive]}>Connexion</Text>
-            </TouchableOpacity>
-            <TouchableOpacity
-              style={[styles.authModeButton, authMode === 'register' && styles.authModeButtonActive]}
-              onPress={() => setAuthMode('register')}
-              activeOpacity={0.88}
-            >
-              <Text style={[styles.authModeText, authMode === 'register' && styles.authModeTextActive]}>Inscription</Text>
-            </TouchableOpacity>
-          </View>
-
-          {authMode === 'register' ? (
-            <>
-              <TextInput
-                style={styles.input}
-                value={fullName}
-                onChangeText={setFullName}
-                placeholder="Nom complet"
-                placeholderTextColor="#6d7f98"
-              />
-              <TextInput
-                style={styles.input}
-                value={salary}
-                onChangeText={setSalary}
-                placeholder="Salaire mensuel"
-                keyboardType="numeric"
-                placeholderTextColor="#6d7f98"
-              />
-              <TextInput
-                style={styles.input}
-                value={balance}
-                onChangeText={setBalance}
-                placeholder="Solde initial"
-                keyboardType="numeric"
-                placeholderTextColor="#6d7f98"
-              />
-            </>
-          ) : null}
-
-          <TextInput
-            style={styles.input}
-            value={email}
-            onChangeText={setEmail}
-            autoCapitalize="none"
-            placeholder="Email"
-            placeholderTextColor="#6d7f98"
-          />
-          <TextInput
-            style={styles.input}
-            value={password}
-            onChangeText={setPassword}
-            secureTextEntry
-            placeholder="Mot de passe"
-            placeholderTextColor="#6d7f98"
-          />
-
-          {authMode === 'login' ? (
-            <TouchableOpacity style={styles.buttonPrimary} onPress={onLogin} activeOpacity={0.88}>
-              <Text style={styles.buttonPrimaryText}>Se connecter</Text>
-            </TouchableOpacity>
-          ) : (
-            <TouchableOpacity style={styles.buttonPrimary} onPress={onRegister} activeOpacity={0.88}>
-              <Text style={styles.buttonPrimaryText}>Creer le compte</Text>
-            </TouchableOpacity>
-          )}
-
-          <Text style={styles.helper}>Comptes seed: admin@bank.local / Admin@1234 et client1@bank.local / Client@1234</Text>
-          {error ? <Text style={styles.error}>{error}</Text> : null}
-        </View>
+        </ScrollView>
         <StatusBar style="dark" />
       </SafeAreaView>
     );
   }
 
+  // ─── MAIN APP ───
+  const loans = dashboard?.loans || [];
+  const requests = dashboard?.requests || [];
+
   return (
-    <SafeAreaView style={styles.safeArea}>
-      <View style={styles.decorTop} />
-      <View style={styles.topBar}>
-        <View style={styles.topBarLeft}>
-          <Image source={{ uri: ATB_LOGO_URI }} style={styles.topBarLogo} resizeMode="contain" />
-          <Text style={styles.topBarTitle}>Bienvenue {user?.fullName}</Text>
+    <SafeAreaView style={s.safe}>
+      {/* Header */}
+      <View style={s.header}>
+        <View style={s.headerLeft}>
+          <Image source={ATB_LOGO} style={s.headerLogo} resizeMode="contain" />
+          <View>
+            <Text style={s.headerGreet}>Bonjour 👋</Text>
+            <Text style={s.headerName}>{user?.fullName}</Text>
+          </View>
         </View>
-        <TouchableOpacity onPress={onLogout}>
-          <Text style={styles.link}>Deconnexion</Text>
-        </TouchableOpacity>
+        <View style={s.headerRight}>
+          <TouchableOpacity onPress={loadInitialData} disabled={isLoadingData} style={s.headerIconBtn}>
+            <RefreshCw size={18} color={COLORS.primary} />
+          </TouchableOpacity>
+          <TouchableOpacity onPress={onLogout} style={s.headerIconBtn}>
+            <LogOut size={18} color={COLORS.error} />
+          </TouchableOpacity>
+        </View>
       </View>
 
-      <View style={styles.navRow}>
-        <NavButton label="Dashboard" active={view === 'dashboard'} onPress={() => setView('dashboard')} />
-        <NavButton label="Credits" active={view === 'credits'} onPress={() => setView('credits')} />
-        <NavButton label="Simulation" active={view === 'simulation'} onPress={() => setView('simulation')} />
-        <NavButton label="Chatbot" active={view === 'chatbot'} onPress={() => setView('chatbot')} />
-        {isAdmin ? <NavButton label="Admin" active={view === 'admin'} onPress={() => setView('admin')} /> : null}
-      </View>
+      <ScrollView style={s.body} contentContainerStyle={s.bodyContent} refreshControl={<RefreshControl refreshing={isLoadingData} onRefresh={loadInitialData} tintColor={COLORS.primary} />}>
+        {notice ? <View style={s.noticeBanner}><CheckCircle2 size={16} color={COLORS.success} /><Text style={s.noticeText}>{notice}</Text></View> : null}
+        {error ? <View style={s.errorBanner}><XCircle size={16} color={COLORS.error} /><Text style={s.errorText}>{error}</Text></View> : null}
 
-      <ScrollView style={styles.body} contentContainerStyle={styles.bodyContent}>
-        {error ? <Text style={styles.error}>{error}</Text> : null}
+        {isLoadingData && <View style={s.loadingBox}><ActivityIndicator color={COLORS.primary} /><Text style={s.loadingText}>Chargement…</Text></View>}
 
-        {view === 'dashboard' ? (
-          <View style={styles.card}>
-            <Text style={styles.sectionTitle}>Tableau de bord</Text>
-            <Text>Solde: {dashboard?.client?.balance ?? 0}</Text>
-            <Text>Salaire: {dashboard?.client?.salary ?? 0}</Text>
-            <Text style={styles.subHeader}>Credits existants</Text>
-            {(dashboard?.loans || []).map((loan) => (
-              <View style={styles.item} key={loan._id}>
-                <Text>{loan.creditType?.name}</Text>
-                <Text>Montant: {loan.amount} | Duree: {loan.durationMonths} mois</Text>
-                <Text>Echeances restantes: {loan.remainingInstallments} | Etat: {loan.status}</Text>
+        {/* ── DASHBOARD ── */}
+        {view === 'dashboard' && (
+          <>
+            <LinearGradient colors={[COLORS.gradientStart, COLORS.gradientEnd]} style={s.balanceCard} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }}>
+              <View style={s.balanceTop}>
+                <Text style={s.balanceLabel}>Solde disponible</Text>
+                <Wallet size={22} color="rgba(255,255,255,0.7)" />
               </View>
-            ))}
-            <Text style={styles.subHeader}>Demandes</Text>
-            {(dashboard?.requests || []).map((item) => (
-              <View style={styles.item} key={item._id}>
-                <Text>{item.creditType?.name}</Text>
-                <Text>{item.requestedAmount} sur {item.requestedDurationMonths} mois</Text>
-                <Text>Statut: {formatStatus(item.status)}</Text>
+              <Text style={s.balanceAmount}>{formatMoney(dashboard?.client?.balance)}</Text>
+              <View style={s.balanceBottom}>
+                <Text style={s.balanceSalary}>Salaire : {formatMoney(dashboard?.client?.salary)}</Text>
               </View>
-            ))}
-          </View>
-        ) : null}
+              <View style={s.balanceDecor} />
+              <View style={s.balanceDecor2} />
+            </LinearGradient>
 
-        {view === 'credits' ? (
-          <View style={styles.card}>
-            <Text style={styles.sectionTitle}>Types de credits</Text>
-            {creditTypes.map((item) => (
-              <TouchableOpacity key={item._id} style={styles.item} onPress={() => setSelectedCreditTypeId(item._id)}>
-                <Text style={styles.itemTitle}>{item.name}</Text>
-                <Text>{item.description}</Text>
-                <Text>Montant: {item.minAmount} - {item.maxAmount}</Text>
-                <Text>Duree: {item.minDurationMonths} - {item.maxDurationMonths} mois</Text>
-                <Text>Taux annuel: {item.annualRate}%</Text>
-              </TouchableOpacity>
-            ))}
-          </View>
-        ) : null}
+            <View style={s.kpiRow}>
+              <KpiCard icon={CreditCard} label="Crédits" value={loans.length} color={COLORS.secondary} />
+              <KpiCard icon={Clock} label="Demandes" value={requests.length} color={COLORS.warning} />
+            </View>
 
-        {view === 'simulation' ? (
-          <View style={styles.card}>
-            <Text style={styles.sectionTitle}>Estimation et pre-eligibilite</Text>
-            <Text>Type choisi: {selectedType?.name || 'Aucun'}</Text>
-            <TextInput style={styles.input} keyboardType="numeric" value={amount} onChangeText={setAmount} placeholder="Montant" />
-            <TextInput
-              style={styles.input}
-              keyboardType="numeric"
-              value={durationMonths}
-              onChangeText={setDurationMonths}
-              placeholder="Duree (mois)"
-            />
-
-            <TouchableOpacity style={styles.buttonPrimary} onPress={onEstimate} activeOpacity={0.88}>
-              <Text style={styles.buttonPrimaryText}>Calculer</Text>
-            </TouchableOpacity>
-
-            <TouchableOpacity style={styles.buttonSecondary} onPress={onSubmitRequest} activeOpacity={0.88}>
-              <Text style={styles.buttonSecondaryText}>Soumettre la demande</Text>
-            </TouchableOpacity>
-
-            {estimationResult ? (
-              <View style={styles.resultBox}>
-                <Text>Mensualite estimee: {estimationResult.estimation.monthlyPayment}</Text>
-                <Text>Cout total estime: {estimationResult.estimation.totalCost}</Text>
-                <Text>Ratio endettement: {estimationResult.estimation.debtRatio}</Text>
-                <Text>Probabilite acceptation: {estimationResult.estimation.acceptanceProbability}</Text>
-              </View>
-            ) : null}
-          </View>
-        ) : null}
-
-        {view === 'chatbot' ? (
-          <View style={styles.card}>
-            <Text style={styles.sectionTitle}>Assistant IA</Text>
-            <TextInput style={styles.input} value={chatQuestion} onChangeText={setChatQuestion} placeholder="Pose ta question" />
-            <TouchableOpacity style={styles.buttonPrimary} onPress={onChat} activeOpacity={0.88}>
-              <Text style={styles.buttonPrimaryText}>Envoyer</Text>
-            </TouchableOpacity>
-            {chatAnswer ? <Text style={styles.chatAnswer}>{chatAnswer}</Text> : null}
-          </View>
-        ) : null}
-
-        {isAdmin && adminSummary ? (
-          <View style={styles.card}>
-            <Text style={styles.sectionTitle}>Module analytique (Power BI)</Text>
-            <Text>Total demandes: {adminSummary.totalRequests}</Text>
-            <Text>Taux acceptation: {adminSummary.acceptanceRate}</Text>
-            <Text>Montant total demande: {adminSummary.totalRequested}</Text>
-            <Text>Montant moyen demande: {adminSummary.avgRequested}</Text>
-          </View>
-        ) : null}
-
-        {isAdmin && view === 'admin' ? (
-          <View style={styles.card}>
-            <Text style={styles.sectionTitle}>Gestion des statuts de demandes</Text>
-            {adminRequests.map((request) => (
-              <View style={styles.item} key={request._id}>
-                <Text style={styles.itemTitle}>{request.user?.fullName || 'Client'}</Text>
-                <Text>{request.creditType?.name} - {request.requestedAmount} / {request.requestedDurationMonths} mois</Text>
-                <Text style={styles.statusText}>Statut actuel: {formatStatus(request.status)}</Text>
-                <View style={styles.adminActionsRow}>
-                  <TouchableOpacity
-                    style={[styles.adminActionButton, styles.pendingButton]}
-                    onPress={() => onUpdateRequestStatus(request._id, 'pending')}
-                    activeOpacity={0.88}
-                  >
-                    <Text style={styles.adminActionText}>En attente</Text>
-                  </TouchableOpacity>
-                  <TouchableOpacity
-                    style={[styles.adminActionButton, styles.acceptedButton]}
-                    onPress={() => onUpdateRequestStatus(request._id, 'accepted')}
-                    activeOpacity={0.88}
-                  >
-                    <Text style={styles.adminActionText}>Accepter</Text>
-                  </TouchableOpacity>
-                  <TouchableOpacity
-                    style={[styles.adminActionButton, styles.rejectedButton]}
-                    onPress={() => onUpdateRequestStatus(request._id, 'rejected')}
-                    activeOpacity={0.88}
-                  >
-                    <Text style={styles.adminActionText}>Refuser</Text>
-                  </TouchableOpacity>
+            <SectionCard>
+              <SectionTitle>Crédits existants</SectionTitle>
+              {loans.length === 0 ? <EmptyState icon="💳" title="Aucun crédit actif" description="Lancez une simulation pour démarrer." /> : loans.map((l) => (
+                <View style={s.listItem} key={l.id}>
+                  <View style={s.listItemHead}><Text style={s.listItemTitle}>{l.CreditType?.name || 'Crédit'}</Text><StatusBadge status={l.status} /></View>
+                  <Text style={s.listItemSub}>Montant : {formatMoney(l.amount)} • {l.durationMonths} mois</Text>
+                  <Text style={s.listItemSub}>Mensualité : {formatMoney(l.monthlyPayment)} • Restant : {l.remainingInstallments}</Text>
                 </View>
+              ))}
+            </SectionCard>
+
+            <SectionCard>
+              <SectionTitle>Demandes récentes</SectionTitle>
+              {requests.length === 0 ? <EmptyState icon="📋" title="Aucune demande" description="Soumettez votre première demande." /> : requests.map((r) => (
+                <View style={s.listItem} key={r.id}>
+                  <View style={s.listItemHead}><Text style={s.listItemTitle}>{r.CreditType?.name || 'Crédit'}</Text><StatusBadge status={r.status} /></View>
+                  <Text style={s.listItemSub}>{formatMoney(r.requestedAmount)} sur {r.requestedDurationMonths} mois</Text>
+                  <Text style={s.listItemSub}>Probabilité : {formatPercent(r.acceptanceProbability || 0)}</Text>
+                </View>
+              ))}
+            </SectionCard>
+          </>
+        )}
+
+        {/* ── CREDITS ── */}
+        {view === 'credits' && (
+          <SectionCard>
+            <SectionTitle>Types de crédits</SectionTitle>
+            {creditTypes.length === 0 ? <EmptyState icon="📁" title="Aucun type" description="Vérifiez les données seed." /> : creditTypes.map((t) => {
+              const active = String(t.id) === String(selectedCreditTypeId);
+              return (
+                <Pressable key={t.id} style={[s.creditType, active && s.creditTypeActive]} onPress={() => setSelectedCreditTypeId(String(t.id))}>
+                  <View style={s.listItemHead}>
+                    <Text style={s.listItemTitle}>{t.name}</Text>
+                    <View style={s.rateTag}><Text style={s.rateTagText}>{t.annualRate}%</Text></View>
+                  </View>
+                  <Text style={s.listItemSub}>{t.description}</Text>
+                  <Text style={s.listItemSub}>Montant : {formatMoney(t.minAmount)} – {formatMoney(t.maxAmount)}</Text>
+                  <Text style={s.listItemSub}>Durée : {t.minDurationMonths} – {t.maxDurationMonths} mois</Text>
+                  <Text style={s.listItemSub}>Documents : {(t.requiredDocuments || []).join(', ') || 'N/A'}</Text>
+                  {active && <View style={s.checkMark}><CheckCircle2 size={18} color={COLORS.primary} /></View>}
+                </Pressable>
+              );
+            })}
+          </SectionCard>
+        )}
+
+        {/* ── SIMULATION ── */}
+        {view === 'simulation' && (
+          <SectionCard>
+            <SectionTitle>Simulation de crédit</SectionTitle>
+            <View style={s.chipRow}>
+              <CreditCard size={16} color={COLORS.primary} />
+              <Text style={s.chipText}>Type : {selectedType?.name || 'Aucun sélectionné'}</Text>
+            </View>
+            <InputLabel>Montant (TND)</InputLabel>
+            <TextInput style={s.input} keyboardType="numeric" value={amount} onChangeText={setAmount} placeholder="Ex: 10000" placeholderTextColor={COLORS.textLight} />
+            <InputLabel>Durée (mois)</InputLabel>
+            <TextInput style={s.input} keyboardType="numeric" value={durationMonths} onChangeText={setDurationMonths} placeholder="Ex: 36" placeholderTextColor={COLORS.textLight} />
+
+            <PrimaryButton label="Calculer l'estimation" onPress={onEstimate} disabled={isActionBusy} loading={isActionBusy} />
+            <SecondaryButton label="Soumettre la demande" onPress={onSubmitRequest} disabled={isActionBusy} />
+
+            {estimationResult && (
+              <View style={s.resultCard}>
+                <Text style={s.resultTitle}>Résultat de l'estimation</Text>
+                <View style={s.resultRow}><Text style={s.resultLabel}>Mensualité</Text><Text style={s.resultValue}>{formatMoney(estimationResult.estimation.monthlyPayment)}</Text></View>
+                <View style={s.resultRow}><Text style={s.resultLabel}>Coût total</Text><Text style={s.resultValue}>{formatMoney(estimationResult.estimation.totalCost)}</Text></View>
+                <View style={s.resultRow}><Text style={s.resultLabel}>Ratio endettement</Text><Text style={s.resultValue}>{formatPercent(estimationResult.estimation.debtRatio)}</Text></View>
+                <View style={s.resultRow}><Text style={s.resultLabel}>Probabilité</Text><Text style={[s.resultValue, { color: COLORS.success }]}>{formatPercent(estimationResult.estimation.acceptanceProbability)}</Text></View>
+              </View>
+            )}
+          </SectionCard>
+        )}
+
+        {/* ── CHATBOT ── */}
+        {view === 'chatbot' && (
+          <SectionCard style={{ flex: 1 }}>
+            <View style={s.chatHeader}><MessageCircle size={20} color={COLORS.primary} /><SectionTitle>Assistant Iram</SectionTitle></View>
+            <View style={s.chatZone}>
+              {chatMessages.length === 0 && <EmptyState icon="🤖" title="Bienvenue !" description="Posez vos questions sur les crédits." />}
+              {chatMessages.map((m, i) => <ChatBubble key={i} text={m.text} isUser={m.isUser} />)}
+            </View>
+            <View style={s.chatInputRow}>
+              <TextInput style={s.chatInput} value={chatQuestion} onChangeText={setChatQuestion} placeholder="Écrivez votre message…" placeholderTextColor={COLORS.textLight} />
+              <Pressable style={s.chatSendBtn} onPress={onChat} disabled={isActionBusy}>
+                <Send size={18} color={COLORS.white} />
+              </Pressable>
+            </View>
+          </SectionCard>
+        )}
+
+        {/* ── ADMIN ── */}
+        {isAdmin && view === 'admin' && (
+          <>
+            <SectionCard>
+              <SectionTitle>Vue analytique</SectionTitle>
+              {adminSummary ? (
+                <View style={s.adminGrid}>
+                  <KpiCard icon={FileText} label="Total demandes" value={adminSummary.totalRequests} color={COLORS.primary} />
+                  <KpiCard icon={Clock} label="En attente" value={adminSummary.pendingRequests} color={COLORS.warning} />
+                  <KpiCard icon={CheckCircle2} label="Acceptées" value={adminSummary.acceptedRequests} color={COLORS.success} />
+                  <KpiCard icon={XCircle} label="Refusées" value={adminSummary.rejectedRequests} color={COLORS.error} />
+                  <KpiCard icon={TrendingUp} label="Taux" value={formatPercent(adminSummary.acceptanceRate)} color={COLORS.success} />
+                  <KpiCard icon={Banknote} label="Montant total" value={formatMoney(adminSummary.totalRequested)} color={COLORS.secondary} />
+                </View>
+              ) : <EmptyState icon="📊" title="Pas de stats" description="Ajoutez des demandes." />}
+            </SectionCard>
+
+            <SectionCard>
+              <SectionTitle>Gestion des demandes</SectionTitle>
+              {adminRequests.length === 0 ? <EmptyState icon="📋" title="Aucune demande" description="Les demandes apparaîtront ici." /> : adminRequests.map((r) => (
+                <View style={s.listItem} key={r.id}>
+                  <View style={s.listItemHead}><Text style={s.listItemTitle}>{r.User?.fullName || 'Client'}</Text><StatusBadge status={r.status} /></View>
+                  <Text style={s.listItemSub}>{r.CreditType?.name || 'Type'} – {formatMoney(r.requestedAmount)} • {r.requestedDurationMonths} mois</Text>
+                  <View style={s.adminActions}>
+                    <TouchableOpacity style={[s.adminBtn, { backgroundColor: COLORS.warning }]} onPress={() => onUpdateRequestStatus(r.id, 'pending')} disabled={isActionBusy}><Text style={s.adminBtnText}>En attente</Text></TouchableOpacity>
+                    <TouchableOpacity style={[s.adminBtn, { backgroundColor: COLORS.success }]} onPress={() => onUpdateRequestStatus(r.id, 'accepted')} disabled={isActionBusy}><Text style={s.adminBtnText}>Accepter</Text></TouchableOpacity>
+                    <TouchableOpacity style={[s.adminBtn, { backgroundColor: COLORS.error }]} onPress={() => onUpdateRequestStatus(r.id, 'rejected')} disabled={isActionBusy}><Text style={s.adminBtnText}>Refuser</Text></TouchableOpacity>
+                  </View>
+                </View>
+              ))}
+            </SectionCard>
+          </>
+        )}
+        
+        {isAdmin && view === 'admin' && (
+          <SectionCard>
+            <SectionTitle>Offres de crédit</SectionTitle>
+            {creditTypes.map((ct) => (
+              <View style={s.listItem} key={ct.id}>
+                {editingCreditTypeId === ct.id ? (
+                  <View style={{ gap: 8 }}>
+                    <Text style={s.listItemTitle}>Édition : {ct.name}</Text>
+                    <View style={s.rowInputs}>
+                      <View style={{ flex: 1 }}>
+                        <InputLabel>Taux Annuel (%)</InputLabel>
+                        <TextInput style={s.input} keyboardType="numeric" value={String(editingRate)} onChangeText={setEditingRate} />
+                      </View>
+                      <View style={{ flex: 1, justifyContent: 'flex-end' }}>
+                        <TouchableOpacity style={[s.adminBtn, { backgroundColor: editingIsActive ? COLORS.success : COLORS.textLight, paddingVertical: 14 }]} onPress={() => setEditingIsActive(!editingIsActive)}>
+                          <Text style={[s.adminBtnText, { textAlign: 'center' }]}>{editingIsActive ? 'Statut: Actif' : 'Statut: Inactif'}</Text>
+                        </TouchableOpacity>
+                      </View>
+                    </View>
+                    <View style={s.adminActions}>
+                      <TouchableOpacity style={[s.adminBtn, { backgroundColor: COLORS.primary, flex: 1 }]} onPress={() => onUpdateCreditType(ct.id)} disabled={isActionBusy}><Text style={[s.adminBtnText, {textAlign:'center'}]}>Enregistrer</Text></TouchableOpacity>
+                      <TouchableOpacity style={[s.adminBtn, { backgroundColor: COLORS.textSecondary }]} onPress={() => setEditingCreditTypeId(null)}><Text style={s.adminBtnText}>Annuler</Text></TouchableOpacity>
+                    </View>
+                  </View>
+                ) : (
+                  <>
+                    <View style={s.listItemHead}>
+                      <Text style={s.listItemTitle}>{ct.name}</Text>
+                      <StatusBadge status={ct.isActive ? 'active' : 'En attente'} />
+                    </View>
+                    <Text style={s.listItemSub}>Taux: {ct.annualRate}% • {ct.minDurationMonths}-{ct.maxDurationMonths} mois • {formatMoney(ct.minAmount)} - {formatMoney(ct.maxAmount)}</Text>
+                    <View style={s.adminActions}>
+                      <TouchableOpacity style={[s.adminBtn, { backgroundColor: COLORS.secondary }]} onPress={() => { setEditingCreditTypeId(ct.id); setEditingRate(String(ct.annualRate)); setEditingIsActive(ct.isActive); }}>
+                        <Text style={s.adminBtnText}>Modifier Offre</Text>
+                      </TouchableOpacity>
+                    </View>
+                  </>
+                )}
               </View>
             ))}
-          </View>
-        ) : null}
+          </SectionCard>
+        )}
       </ScrollView>
 
+      <BottomTabBar tabs={isAdmin ? tabsAdmin : tabsClient} active={view} onPress={setView} />
       <StatusBar style="dark" />
     </SafeAreaView>
   );
 }
 
-function NavButton({ label, active, onPress }) {
-  return (
-    <Pressable
-      style={({ pressed }) => [styles.navButton, active && styles.navButtonActive, pressed && styles.navButtonPressed]}
-      onPress={onPress}
-    >
-      <Text style={[styles.navButtonText, active && styles.navButtonTextActive]}>{label}</Text>
-    </Pressable>
-  );
-}
-
-const styles = StyleSheet.create({
-  safeArea: {
-    flex: 1,
-    backgroundColor: '#f2f6fb',
-  },
-  loadingWrap: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-    gap: 14,
-  },
-  loadingText: {
-    color: '#2d4f7f',
-    fontFamily: 'Manrope_600SemiBold',
-    fontSize: 14,
-  },
-  decorTop: {
-    position: 'absolute',
-    top: -90,
-    right: -70,
-    width: 240,
-    height: 240,
-    borderRadius: 120,
-    backgroundColor: '#e3edf9',
-  },
-  decorBottom: {
-    position: 'absolute',
-    bottom: -120,
-    left: -90,
-    width: 260,
-    height: 260,
-    borderRadius: 130,
-    backgroundColor: '#ffe6d2',
-  },
-  authContainer: {
-    flex: 1,
-    justifyContent: 'center',
-    padding: 22,
-    gap: 12,
-  },
-  authModeRow: {
-    flexDirection: 'row',
-    backgroundColor: '#e9f0fb',
-    borderRadius: 12,
-    padding: 4,
-    gap: 6,
-  },
-  authModeButton: {
-    flex: 1,
-    borderRadius: 10,
-    paddingVertical: 10,
-    alignItems: 'center',
-  },
-  authModeButtonActive: {
-    backgroundColor: '#0f4a92',
-  },
-  authModeText: {
-    color: '#1c4e89',
-    fontFamily: 'Manrope_700Bold',
-  },
-  authModeTextActive: {
-    color: '#fff',
-  },
-  brandHero: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 12,
-    marginBottom: 14,
-    padding: 14,
-    borderRadius: 16,
-    backgroundColor: '#ffffff',
-    borderWidth: 1,
-    borderColor: '#d5e2f2',
-    shadowColor: '#113b76',
-    shadowOffset: { width: 0, height: 6 },
-    shadowOpacity: 0.08,
-    shadowRadius: 10,
-    elevation: 2,
-  },
-  brandLogo: {
-    width: 62,
-    height: 62,
-    borderRadius: 10,
-    backgroundColor: '#fff',
-  },
-  title: {
-    fontSize: 28,
-    fontFamily: 'Manrope_800ExtraBold',
-    color: '#0f3a74',
-    letterSpacing: 0.2,
-  },
-  subtitle: {
-    fontSize: 14,
-    color: '#365f92',
-    fontFamily: 'Manrope_500Medium',
-  },
-  input: {
-    borderWidth: 1,
-    borderColor: '#c6d7ea',
-    borderRadius: 12,
-    paddingHorizontal: 12,
-    paddingVertical: 12,
-    backgroundColor: '#fff',
-    color: '#0f2f57',
-  },
-  buttonPrimary: {
-    backgroundColor: '#0f4a92',
-    borderRadius: 12,
-    paddingVertical: 13,
-    alignItems: 'center',
-    shadowColor: '#0f4a92',
-    shadowOffset: { width: 0, height: 10 },
-    shadowOpacity: 0.18,
-    shadowRadius: 12,
-    elevation: 4,
-  },
-  buttonPrimaryText: {
-    color: '#fff',
-    fontFamily: 'Manrope_700Bold',
-    letterSpacing: 0.2,
-  },
-  buttonSecondary: {
-    borderWidth: 1,
-    borderColor: '#f28a22',
-    borderRadius: 12,
-    paddingVertical: 12,
-    alignItems: 'center',
-    marginTop: 8,
-    backgroundColor: '#fffaf5',
-  },
-  buttonSecondaryText: {
-    color: '#d9720e',
-    fontFamily: 'Manrope_700Bold',
-    letterSpacing: 0.2,
-  },
-  helper: {
-    fontSize: 12,
-    color: '#4a6687',
-    fontFamily: 'Manrope_500Medium',
-  },
-  error: {
-    color: '#b92d2d',
-    fontFamily: 'Manrope_700Bold',
-    marginVertical: 6,
-  },
-  topBar: {
-    paddingHorizontal: 16,
-    paddingVertical: 12,
-    borderBottomWidth: 1,
-    borderBottomColor: '#d1dff1',
-    backgroundColor: '#ffffff',
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-  },
-  topBarLeft: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 10,
-    flexShrink: 1,
-  },
-  topBarLogo: {
-    width: 28,
-    height: 28,
-  },
-  topBarTitle: {
-    fontFamily: 'Manrope_700Bold',
-    color: '#123f79',
-    flexShrink: 1,
-  },
-  link: {
-    color: '#f28a22',
-    textDecorationLine: 'underline',
-    fontFamily: 'Manrope_700Bold',
-  },
-  navRow: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 8,
-    padding: 10,
-    backgroundColor: '#f7faff',
-  },
-  navButton: {
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    borderRadius: 16,
-    backgroundColor: '#e5eef9',
-  },
-  navButtonPressed: {
-    transform: [{ scale: 0.98 }],
-  },
-  navButtonActive: {
-    backgroundColor: '#0f4a92',
-  },
-  navButtonText: {
-    color: '#0f3a74',
-    fontFamily: 'Manrope_600SemiBold',
-  },
-  navButtonTextActive: {
-    color: '#fff',
-  },
-  body: {
-    flex: 1,
-  },
-  bodyContent: {
-    padding: 12,
-    gap: 12,
-  },
-  card: {
-    backgroundColor: '#fff',
-    borderRadius: 14,
-    padding: 12,
-    gap: 8,
-    borderWidth: 1,
-    borderColor: '#dce7f5',
-  },
-  sectionTitle: {
-    fontSize: 18,
-    fontFamily: 'Manrope_700Bold',
-    color: '#0f3a74',
-  },
-  subHeader: {
-    marginTop: 8,
-    fontFamily: 'Manrope_700Bold',
-    color: '#2d4f7f',
-  },
-  item: {
-    borderWidth: 1,
-    borderColor: '#e3ebf7',
-    borderRadius: 10,
-    padding: 8,
-    gap: 2,
-    backgroundColor: '#fbfdff',
-  },
-  itemTitle: {
-    fontFamily: 'Manrope_700Bold',
-    color: '#123f79',
-  },
-  resultBox: {
-    marginTop: 10,
-    padding: 10,
-    borderRadius: 10,
-    backgroundColor: '#fff3e7',
-    gap: 4,
-    borderWidth: 1,
-    borderColor: '#ffd5b0',
-  },
-  chatAnswer: {
-    marginTop: 10,
-    padding: 10,
-    borderRadius: 10,
-    backgroundColor: '#edf4fd',
-    color: '#163e74',
-    borderWidth: 1,
-    borderColor: '#ccdef3',
-  },
-  statusText: {
-    fontFamily: 'Manrope_600SemiBold',
-    color: '#315584',
-  },
-  adminActionsRow: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 8,
-    marginTop: 8,
-  },
-  adminActionButton: {
-    borderRadius: 10,
-    paddingVertical: 8,
-    paddingHorizontal: 12,
-  },
-  pendingButton: {
-    backgroundColor: '#6b7d99',
-  },
-  acceptedButton: {
-    backgroundColor: '#2f9b57',
-  },
-  rejectedButton: {
-    backgroundColor: '#cc3f3f',
-  },
-  adminActionText: {
-    color: '#fff',
-    fontFamily: 'Manrope_700Bold',
-    fontSize: 12,
-  },
+// ─── STYLES ───
+const s = StyleSheet.create({
+  safe: { flex: 1, backgroundColor: COLORS.background },
+  // Splash
+  splash: { flex: 1 },
+  splashGrad: { flex: 1, alignItems: 'center', justifyContent: 'center' },
+  splashLogo: { width: 80, height: 80, borderRadius: 20, marginBottom: 16 },
+  splashTitle: { fontFamily: FONTS.extraBold, fontSize: 36, color: COLORS.white, letterSpacing: 1 },
+  splashSub: { fontFamily: FONTS.medium, fontSize: 14, color: 'rgba(255,255,255,0.7)' },
+  // Auth
+  authWrap: { flexGrow: 1, justifyContent: 'center', padding: SPACING.xl, gap: SPACING.xl },
+  authHeader: { alignItems: 'center', gap: 8 },
+  authLogo: { width: 70, height: 70, borderRadius: 18 },
+  authTitle: { fontFamily: FONTS.extraBold, fontSize: 32, color: COLORS.primary },
+  authSubtitle: { fontFamily: FONTS.medium, fontSize: 14, color: COLORS.textSecondary },
+  authCard: { backgroundColor: COLORS.white, borderRadius: RADIUS.xl, padding: SPACING.xl, gap: SPACING.md, ...SHADOW.card },
+  authToggle: { flexDirection: 'row', backgroundColor: COLORS.surfaceAlt, borderRadius: RADIUS.md, padding: 4, gap: 4 },
+  authToggleBtn: { flex: 1, borderRadius: RADIUS.sm, paddingVertical: 10, alignItems: 'center' },
+  authToggleBtnActive: { backgroundColor: COLORS.primary, ...SHADOW.elevated },
+  authToggleText: { fontFamily: FONTS.bold, color: COLORS.textSecondary, fontSize: 14 },
+  authToggleTextActive: { color: COLORS.white },
+  rowInputs: { flexDirection: 'row', gap: SPACING.sm },
+  input: { borderWidth: 1, borderColor: COLORS.border, borderRadius: RADIUS.md, paddingHorizontal: 14, paddingVertical: 13, backgroundColor: COLORS.surface, color: COLORS.text, fontFamily: FONTS.medium, fontSize: 14 },
+  helper: { fontSize: 11, color: COLORS.textLight, fontFamily: FONTS.regular, textAlign: 'center', lineHeight: 17 },
+  // Header
+  header: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: SPACING.lg, paddingVertical: SPACING.md, backgroundColor: COLORS.white, borderBottomWidth: 1, borderBottomColor: COLORS.borderLight },
+  headerLeft: { flexDirection: 'row', alignItems: 'center', gap: 10, flexShrink: 1 },
+  headerLogo: { width: 34, height: 34, borderRadius: 10 },
+  headerGreet: { fontFamily: FONTS.medium, fontSize: 12, color: COLORS.textSecondary },
+  headerName: { fontFamily: FONTS.bold, fontSize: 16, color: COLORS.text },
+  headerRight: { flexDirection: 'row', gap: 6 },
+  headerIconBtn: { width: 38, height: 38, borderRadius: 12, backgroundColor: COLORS.surfaceAlt, alignItems: 'center', justifyContent: 'center' },
+  // Body
+  body: { flex: 1 },
+  bodyContent: { padding: SPACING.lg, gap: SPACING.md, paddingBottom: 24 },
+  // Notices
+  noticeBanner: { flexDirection: 'row', alignItems: 'center', gap: 8, backgroundColor: COLORS.successBg, borderRadius: RADIUS.md, padding: SPACING.md },
+  noticeText: { color: COLORS.success, fontFamily: FONTS.semiBold, fontSize: 13, flex: 1 },
+  errorBanner: { flexDirection: 'row', alignItems: 'center', gap: 8, backgroundColor: COLORS.errorBg, borderRadius: RADIUS.md, padding: SPACING.md },
+  errorText: { color: COLORS.error, fontFamily: FONTS.semiBold, fontSize: 13, flex: 1 },
+  loadingBox: { alignItems: 'center', gap: 8, padding: SPACING.xl },
+  loadingText: { fontFamily: FONTS.semiBold, color: COLORS.primary, fontSize: 13 },
+  // Balance card
+  balanceCard: { borderRadius: RADIUS.xl, padding: SPACING.xl, overflow: 'hidden', ...SHADOW.elevated },
+  balanceTop: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
+  balanceLabel: { fontFamily: FONTS.medium, fontSize: 13, color: 'rgba(255,255,255,0.75)' },
+  balanceAmount: { fontFamily: FONTS.extraBold, fontSize: 32, color: COLORS.white, marginTop: 8 },
+  balanceBottom: { marginTop: 12 },
+  balanceSalary: { fontFamily: FONTS.medium, fontSize: 13, color: 'rgba(255,255,255,0.6)' },
+  balanceDecor: { position: 'absolute', top: -40, right: -40, width: 140, height: 140, borderRadius: 70, backgroundColor: 'rgba(255,255,255,0.08)' },
+  balanceDecor2: { position: 'absolute', bottom: -50, left: -30, width: 120, height: 120, borderRadius: 60, backgroundColor: 'rgba(255,255,255,0.05)' },
+  // KPI
+  kpiRow: { flexDirection: 'row', gap: SPACING.md },
+  // List items
+  listItem: { borderWidth: 1, borderColor: COLORS.borderLight, borderRadius: RADIUS.md, padding: SPACING.md, gap: 4, backgroundColor: COLORS.surface },
+  listItemHead: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', gap: 8 },
+  listItemTitle: { fontFamily: FONTS.bold, color: COLORS.text, fontSize: 14, flexShrink: 1 },
+  listItemSub: { fontFamily: FONTS.regular, color: COLORS.textSecondary, fontSize: 13 },
+  // Credit types
+  creditType: { borderWidth: 1.5, borderColor: COLORS.border, borderRadius: RADIUS.lg, padding: SPACING.lg, gap: 4, backgroundColor: COLORS.surface },
+  creditTypeActive: { borderColor: COLORS.primary, backgroundColor: COLORS.primary + '08' },
+  rateTag: { backgroundColor: COLORS.primary + '12', borderRadius: RADIUS.full, paddingHorizontal: 10, paddingVertical: 4 },
+  rateTagText: { fontFamily: FONTS.bold, fontSize: 12, color: COLORS.primary },
+  checkMark: { position: 'absolute', top: 12, right: 12 },
+  // Simulation
+  chipRow: { flexDirection: 'row', alignItems: 'center', gap: 8, backgroundColor: COLORS.surfaceAlt, borderRadius: RADIUS.sm, padding: SPACING.sm },
+  chipText: { fontFamily: FONTS.semiBold, fontSize: 13, color: COLORS.primary },
+  resultCard: { backgroundColor: COLORS.surfaceAlt, borderRadius: RADIUS.md, padding: SPACING.lg, gap: 10, marginTop: 8 },
+  resultTitle: { fontFamily: FONTS.bold, fontSize: 15, color: COLORS.text, marginBottom: 4 },
+  resultRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
+  resultLabel: { fontFamily: FONTS.medium, fontSize: 13, color: COLORS.textSecondary },
+  resultValue: { fontFamily: FONTS.bold, fontSize: 15, color: COLORS.text },
+  // Chat
+  chatHeader: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  chatZone: { minHeight: 200, gap: 4 },
+  chatInputRow: { flexDirection: 'row', gap: 8, alignItems: 'center' },
+  chatInput: { flex: 1, borderWidth: 1, borderColor: COLORS.border, borderRadius: RADIUS.full, paddingHorizontal: 16, paddingVertical: 12, backgroundColor: COLORS.surface, fontFamily: FONTS.medium, fontSize: 14, color: COLORS.text },
+  chatSendBtn: { width: 44, height: 44, borderRadius: 22, backgroundColor: COLORS.primary, alignItems: 'center', justifyContent: 'center', ...SHADOW.elevated },
+  // Admin
+  adminGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: SPACING.md },
+  adminActions: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 8 },
+  adminBtn: { borderRadius: RADIUS.sm, paddingVertical: 8, paddingHorizontal: 12 },
+  adminBtnText: { color: COLORS.white, fontFamily: FONTS.bold, fontSize: 12 },
 });

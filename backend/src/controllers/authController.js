@@ -31,8 +31,8 @@ async function register(req, res) {
     return res.status(400).json({ message: 'salary et balance doivent etre des valeurs positives' });
   }
 
-  const exists = await User.findOne({ email: normalizedEmail });
-  if (exists) {
+  const existingUser = await User.findOne({ where: { email: normalizedEmail } });
+  if (existingUser) {
     return res.status(409).json({ message: 'Email deja utilise' });
   }
 
@@ -46,8 +46,8 @@ async function register(req, res) {
     role: 'client',
   });
 
-  const token = signToken(user._id.toString());
-  return res.status(201).json({ token, user: { id: user._id, fullName: user.fullName, email: user.email, role: user.role } });
+  const token = signToken(String(user.id));
+  return res.status(201).json({ token, user: { id: user.id, fullName: user.fullName, email: user.email, role: user.role } });
 }
 
 async function login(req, res) {
@@ -59,7 +59,7 @@ async function login(req, res) {
     return res.status(400).json({ message: 'email et password sont requis' });
   }
 
-  const user = await User.findOne({ email: normalizedEmail });
+  const user = await User.findOne({ where: { email: normalizedEmail } });
   if (!user) {
     return res.status(401).json({ message: 'Identifiants invalides' });
   }
@@ -69,13 +69,26 @@ async function login(req, res) {
     return res.status(401).json({ message: 'Identifiants invalides' });
   }
 
-  const token = signToken(user._id.toString());
-  return res.json({ token, user: { id: user._id, fullName: user.fullName, email: user.email, role: user.role } });
+  const token = signToken(String(user.id));
+  return res.json({ token, user: { id: user.id, fullName: user.fullName, email: user.email, role: user.role } });
 }
 
 async function me(req, res) {
-  const user = await User.findById(req.user._id).select('-passwordHash').lean();
-  return res.json(user);
+  const user = await User.findByPk(req.user.id);
+  if (!user) {
+    return res.status(404).json({ message: 'Utilisateur introuvable' });
+  }
+
+  return res.json({
+    id: user.id,
+    fullName: user.fullName,
+    email: user.email,
+    role: user.role,
+    salary: user.salary,
+    balance: user.balance,
+    createdAt: user.createdAt,
+    updatedAt: user.updatedAt,
+  });
 }
 
 module.exports = {

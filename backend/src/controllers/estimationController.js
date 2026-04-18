@@ -24,7 +24,7 @@ async function estimate(req, res) {
     return res.status(400).json({ message: 'amount, durationMonths et salary doivent etre > 0' });
   }
 
-  const creditType = await CreditType.findById(creditTypeId).lean();
+  const creditType = await CreditType.findByPk(creditTypeId);
   if (!creditType || !creditType.isActive) {
     return res.status(404).json({ message: 'Type de credit introuvable' });
   }
@@ -40,7 +40,7 @@ async function estimate(req, res) {
     });
   }
 
-  const currentLoans = await Loan.find({ user: req.user._id, status: 'active' }).lean();
+  const currentLoans = await Loan.findAll({ where: { userId: req.user.id, status: 'active' } });
   const existingMonthlyDebt = currentLoans.reduce((sum, loan) => sum + loan.monthlyPayment, 0);
 
   const result = buildEstimation({
@@ -53,7 +53,7 @@ async function estimate(req, res) {
   });
 
   return res.json({
-    creditType: { id: creditType._id, name: creditType.name, annualRate: creditType.annualRate },
+    creditType: { id: creditType.id, name: creditType.name, annualRate: creditType.annualRate },
     input: { amount: normalizedAmount, durationMonths: normalizedDuration, salary: normalizedSalary, existingMonthlyDebt },
     estimation: result,
   });

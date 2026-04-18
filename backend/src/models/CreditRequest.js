@@ -1,24 +1,30 @@
-const mongoose = require('mongoose');
+const { DataTypes } = require('sequelize');
+const { sequelize } = require('../config/sequelize');
 
-const creditRequestSchema = new mongoose.Schema(
+const CreditRequest = sequelize.define(
+  'CreditRequest',
   {
-    user: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
-    creditType: { type: mongoose.Schema.Types.ObjectId, ref: 'CreditType', required: true },
-    requestedAmount: { type: Number, required: true },
-    requestedDurationMonths: { type: Number, required: true },
-    salaryAtRequest: { type: Number, required: true },
-    estimatedMonthlyPayment: { type: Number, required: true },
-    estimatedTotalCost: { type: Number, required: true },
-    debtRatio: { type: Number, required: true },
-    acceptanceProbability: { type: Number, required: true },
+    id: { type: DataTypes.INTEGER.UNSIGNED, autoIncrement: true, primaryKey: true },
+    userId: { type: DataTypes.INTEGER.UNSIGNED, allowNull: false },
+    creditTypeId: { type: DataTypes.INTEGER.UNSIGNED, allowNull: false },
+    requestedAmount: { type: DataTypes.FLOAT, allowNull: false },
+    requestedDurationMonths: { type: DataTypes.INTEGER, allowNull: false },
+    salaryAtRequest: { type: DataTypes.FLOAT, allowNull: false },
+    estimatedMonthlyPayment: { type: DataTypes.FLOAT, allowNull: false },
+    estimatedTotalCost: { type: DataTypes.FLOAT, allowNull: false },
+    debtRatio: { type: DataTypes.FLOAT, allowNull: false },
+    acceptanceProbability: { type: DataTypes.FLOAT, allowNull: false },
     status: {
-      type: String,
-      enum: ['pending', 'accepted', 'rejected'],
-      default: 'pending',
+      type: DataTypes.ENUM('pending', 'accepted', 'rejected'),
+      allowNull: false,
+      defaultValue: 'pending',
     },
-    adminComment: { type: String, default: '' },
+    adminComment: { type: DataTypes.TEXT, allowNull: false, defaultValue: '' },
   },
-  { timestamps: true }
+  {
+    tableName: 'credit_requests',
+    timestamps: true,
+  }
 );
 
-module.exports = mongoose.model('CreditRequest', creditRequestSchema);
+module.exports = CreditRequest;

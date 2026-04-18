@@ -1,11 +1,15 @@
-# Backend Credit App (Node.js + Express + MongoDB)
+# Backend Credit App (Node.js + Express + MySQL)
 
 ## 1) Configuration
 
 Copy `.env.example` to `.env` and adapt values:
 
 - `PORT=4000`
-- `MONGO_URI=mongodb://127.0.0.1:27017/credit_app`
+- `MYSQL_HOST=127.0.0.1`
+- `MYSQL_PORT=3306`
+- `MYSQL_DATABASE=credit_app`
+- `MYSQL_USER=root`
+- `MYSQL_PASSWORD=`
 - `JWT_SECRET=change_this_secret`
 - `JWT_EXPIRES_IN=7d`
 - `FRONTEND_ORIGIN=*`

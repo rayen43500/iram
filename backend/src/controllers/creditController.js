@@ -4,8 +4,15 @@ const CreditRequest = require('../models/CreditRequest');
 
 async function getDashboard(req, res) {
   const [loans, requests] = await Promise.all([
-    Loan.find({ user: req.user._id }).populate('creditType', 'name slug').lean(),
-    CreditRequest.find({ user: req.user._id }).sort({ createdAt: -1 }).populate('creditType', 'name slug').lean(),
+    Loan.findAll({
+      where: { userId: req.user.id },
+      include: [{ model: CreditType, attributes: ['id', 'name', 'slug'] }],
+    }),
+    CreditRequest.findAll({
+      where: { userId: req.user.id },
+      order: [['createdAt', 'DESC']],
+      include: [{ model: CreditType, attributes: ['id', 'name', 'slug'] }],
+    }),
   ]);
 
   return res.json({
@@ -20,12 +27,12 @@ async function getDashboard(req, res) {
 }
 
 async function listCreditTypes(req, res) {
-  const creditTypes = await CreditType.find({ isActive: true }).sort({ name: 1 }).lean();
+  const creditTypes = await CreditType.findAll({ where: { isActive: true }, order: [['name', 'ASC']] });
   return res.json(creditTypes);
 }
 
 async function getCreditTypeBySlug(req, res) {
-  const creditType = await CreditType.findOne({ slug: req.params.slug, isActive: true }).lean();
+  const creditType = await CreditType.findOne({ where: { slug: req.params.slug, isActive: true } });
   if (!creditType) {
     return res.status(404).json({ message: 'Type de credit introuvable' });
   }
