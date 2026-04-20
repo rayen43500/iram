@@ -14,13 +14,21 @@ Copy `.env.example` to `.env` and adapt values:
 - `JWT_EXPIRES_IN=7d`
 - `FRONTEND_ORIGIN=*`
 - `SCORING_MAX_DEBT_RATIO=0.35`
+- `AUTO_SEED_ON_START=true`
 
 ## 2) Start
 
 ```bash
 npm install
-npm run seed
 npm run dev
+```
+
+By default, demo data is now auto-created on server start if the database is empty (`AUTO_SEED_ON_START=true`).
+
+If you want to reset and recreate everything manually, run:
+
+```bash
+npm run seed
 ```
 
 Health check: `GET /health`

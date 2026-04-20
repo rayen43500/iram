@@ -13,4 +13,5 @@ module.exports = {
   jwtExpiresIn: process.env.JWT_EXPIRES_IN || '7d',
   frontendOrigin: process.env.FRONTEND_ORIGIN || '*',
   scoringMaxDebtRatio: Number(process.env.SCORING_MAX_DEBT_RATIO || 0.35),
+  autoSeedOnStart: (process.env.AUTO_SEED_ON_START || 'true').toLowerCase() === 'true',
 };

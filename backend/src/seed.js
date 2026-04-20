@@ -6,10 +6,7 @@ const User = require('./models/User');
 const Loan = require('./models/Loan');
 const CreditRequest = require('./models/CreditRequest');
 
-async function run() {
-  await connectDb({ forceSync: true });
-
-  const creditTypes = await CreditType.bulkCreate([
+const DEFAULT_CREDIT_TYPES = [
     {
       name: 'Credit personnel',
       slug: 'credit-personnel',
@@ -46,28 +43,67 @@ async function run() {
       requiredDocuments: ['piece identite', 'compromis vente', 'justificatifs revenus'],
       isActive: true,
     },
-  ]);
+  ];
+
+async function ensureCreditTypes() {
+  const creditTypes = [];
+
+  for (const payload of DEFAULT_CREDIT_TYPES) {
+    const [creditType] = await CreditType.findOrCreate({
+      where: { slug: payload.slug },
+      defaults: payload,
+    });
+    creditTypes.push(creditType);
+  }
+
+  return creditTypes;
+}
+
+async function seedDatabase({ forceSync = false, skipIfNotEmpty = false, skipConnect = false } = {}) {
+  if (!skipConnect) {
+    await connectDb({ forceSync });
+  }
+
+  if (skipIfNotEmpty) {
+    const [userCount, creditTypeCount] = await Promise.all([User.count(), CreditType.count()]);
+    if (userCount > 0 || creditTypeCount > 0) {
+      console.log('Seed auto ignore: base deja initialisee.');
+      return { seeded: false };
+    }
+  }
+
+  const creditTypes = await ensureCreditTypes();
 
   const adminHash = await bcrypt.hash('Admin@1234', 10);
-  const admin = await User.create({
-    fullName: 'Admin Banque',
-    email: 'admin@bank.local',
-    passwordHash: adminHash,
-    role: 'admin',
-    salary: 0,
-    balance: 0,
+  const [admin] = await User.findOrCreate({
+    where: { email: 'admin@bank.local' },
+    defaults: {
+      fullName: 'Admin Banque',
+      email: 'admin@bank.local',
+      passwordHash: adminHash,
+      role: 'admin',
+      salary: 0,
+      balance: 0,
+    },
   });
 
   for (let i = 0; i < 8; i += 1) {
     const passwordHash = await bcrypt.hash('Client@1234', 10);
-    const client = await User.create({
-      fullName: faker.person.fullName(),
-      email: `client${i + 1}@bank.local`,
-      passwordHash,
-      role: 'client',
-      salary: faker.number.int({ min: 1800, max: 6500 }),
-      balance: faker.number.int({ min: 500, max: 12000 }),
+    const [client, wasCreated] = await User.findOrCreate({
+      where: { email: `client${i + 1}@bank.local` },
+      defaults: {
+        fullName: faker.person.fullName(),
+        email: `client${i + 1}@bank.local`,
+        passwordHash,
+        role: 'client',
+        salary: faker.number.int({ min: 1800, max: 6500 }),
+        balance: faker.number.int({ min: 500, max: 12000 }),
+      },
     });
+
+    if (!wasCreated) {
+      continue;
+    }
 
     const type = creditTypes[faker.number.int({ min: 0, max: creditTypes.length - 1 })];
     const amount = faker.number.int({ min: type.minAmount, max: Math.min(type.maxAmount, type.minAmount + 20000) });
@@ -102,11 +138,22 @@ async function run() {
 
   console.log('Seed termine.');
   console.log('Admin:', admin.email, 'password: Admin@1234');
+  return { seeded: true };
+}
+
+async function runAsScript() {
+  await seedDatabase({ forceSync: true });
   process.exit(0);
 }
 
-run().catch((error) => {
-  console.error(error);
-  process.exit(1);
-});
+if (require.main === module) {
+  runAsScript().catch((error) => {
+    console.error(error);
+    process.exit(1);
+  });
+}
+
+module.exports = {
+  seedDatabase,
+};
 
