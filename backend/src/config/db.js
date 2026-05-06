@@ -46,6 +46,30 @@ async function ensureDatabaseExists() {
   }
 }
 
+/**
+ * Anciennes bases sans migration manuelle : ajoute credit_requests.applicationForm si absente.
+ */
+async function ensureCreditRequestApplicationFormColumn() {
+  const dialect = sequelize.getDialect();
+  if (!['mysql', 'mariadb'].includes(dialect)) {
+    return;
+  }
+  const [rows] = await sequelize.query(
+    `SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS 
+     WHERE TABLE_SCHEMA = DATABASE()
+     AND TABLE_NAME = 'credit_requests'
+     AND COLUMN_NAME = 'applicationForm'
+     LIMIT 1`
+  );
+  if (rows && rows.length > 0) {
+    return;
+  }
+  await sequelize.query(
+    'ALTER TABLE `credit_requests` ADD COLUMN `applicationForm` JSON NULL'
+  );
+  console.log('Schema: colonne credit_requests.applicationForm ajoutee automatiquement.');
+}
+
 async function connectDb({ forceSync = false } = {}) {
   initAssociations();
   await ensureDatabaseExists();
@@ -54,6 +78,7 @@ async function connectDb({ forceSync = false } = {}) {
     force: Boolean(forceSync),
     alter: Boolean(env.sequelizeAlter) && !forceSync,
   });
+  await ensureCreditRequestApplicationFormColumn();
   console.log('MySQL connecte');
 }
 
