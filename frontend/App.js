@@ -70,6 +70,15 @@ export default function App() {
   const isCompact = width < 380;
   const isTiny = width < 340;
   const selectedType = useMemo(() => creditTypes.find((i) => String(i.id) === String(selectedCreditTypeId)), [creditTypes, selectedCreditTypeId]);
+  const filteredCreditTypes = useMemo(() => creditTypes.filter((t) => {
+    const matchQuery = String(t.name || '').toLowerCase().includes(creditSearchQuery.trim().toLowerCase());
+    const matchState = !creditOnlyActive || Boolean(t.isActive);
+    return matchQuery && matchState;
+  }), [creditOnlyActive, creditSearchQuery, creditTypes]);
+  const topRecommendedTypes = useMemo(() => [...creditTypes]
+    .filter((t) => t.isActive)
+    .sort((a, b) => Number(a.annualRate) - Number(b.annualRate))
+    .slice(0, 3), [creditTypes]);
 
   useEffect(() => { if (isAuthenticated) loadInitialData(); }, [isAuthenticated]);
 
@@ -251,15 +260,6 @@ export default function App() {
   // ─── MAIN APP ───
   const loans = dashboard?.loans || [];
   const requests = dashboard?.requests || [];
-  const filteredCreditTypes = useMemo(() => creditTypes.filter((t) => {
-    const matchQuery = t.name.toLowerCase().includes(creditSearchQuery.trim().toLowerCase());
-    const matchState = !creditOnlyActive || Boolean(t.isActive);
-    return matchQuery && matchState;
-  }), [creditOnlyActive, creditSearchQuery, creditTypes]);
-  const topRecommendedTypes = useMemo(() => [...creditTypes]
-    .filter((t) => t.isActive)
-    .sort((a, b) => Number(a.annualRate) - Number(b.annualRate))
-    .slice(0, 3), [creditTypes]);
   const debtRatio = Number(estimationResult?.estimation?.debtRatio || 0);
   const riskLevel = debtRatio <= 0.35 ? 'Faible' : debtRatio <= 0.45 ? 'Moyen' : 'Eleve';
   const riskColor = debtRatio <= 0.35 ? COLORS.success : debtRatio <= 0.45 ? COLORS.warning : COLORS.error;
