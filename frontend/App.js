@@ -2,7 +2,7 @@ import { StatusBar } from 'expo-status-bar';
 import { useEffect, useMemo, useState } from 'react';
 import {
   ActivityIndicator, Image, Pressable, RefreshControl, SafeAreaView, ScrollView,
-  StyleSheet, Text, TextInput, TouchableOpacity, View, Dimensions, Modal
+  StyleSheet, Text, TextInput, TouchableOpacity, View, Dimensions, Modal, useWindowDimensions
 } from 'react-native';
 import { Inter_400Regular, Inter_500Medium, Inter_600SemiBold, Inter_700Bold, Inter_800ExtraBold, useFonts } from '@expo-google-fonts/inter';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -17,7 +17,19 @@ const ATB_LOGO = require('./assets/image.png');
 function formatMoney(v) { return `${Number(v || 0).toLocaleString('fr-FR', { maximumFractionDigits: 2 })} TND`; }
 function formatPercent(v) { const n = Number(v || 0) * (v <= 1 ? 100 : 1); return `${n.toFixed(1)}%`; }
 
+const PRO_CREDIT_CATALOG = [
+  { name: 'Credit Sakan', target: 'Logement principal ou secondaire', speed: '48h' },
+  { name: 'Credit ATBAWALSAKAN', target: 'Acquisition immobiliere avec accompagnement', speed: '72h' },
+  { name: 'Credit Tahawel', target: 'Refinancement et transfert de credit', speed: '24h' },
+  { name: 'Credit Sayara', target: 'Vehicule neuf ou occasion', speed: '24h' },
+  { name: 'Credit Start', target: 'Lancement de projet pro/auto-entrepreneur', speed: '72h' },
+  { name: 'Credit Mounassib', target: 'Besoin perso a mensualite equilibree', speed: '24h' },
+  { name: 'Credit Renov', target: 'Renovation et travaux habitat', speed: '48h' },
+  { name: 'Credit Bien Etre', target: 'Sante, etudes et confort familial', speed: '24h' },
+];
+
 export default function App() {
+  const { width, height } = useWindowDimensions();
   const [fontsLoaded] = useFonts({ Inter_400Regular, Inter_500Medium, Inter_600SemiBold, Inter_700Bold, Inter_800ExtraBold });
   const [token, setToken] = useState('');
   const [user, setUser] = useState(null);
@@ -50,9 +62,13 @@ export default function App() {
   const [adminStatusFilter, setAdminStatusFilter] = useState('all');
   const [adminSelectedRequest, setAdminSelectedRequest] = useState(null);
   const [adminRejectionReason, setAdminRejectionReason] = useState('');
+  const [creditSearchQuery, setCreditSearchQuery] = useState('');
+  const [creditOnlyActive, setCreditOnlyActive] = useState(false);
 
   const isAuthenticated = Boolean(token && user);
   const isAdmin = user?.role === 'admin';
+  const isCompact = width < 380;
+  const isTiny = width < 340;
   const selectedType = useMemo(() => creditTypes.find((i) => String(i.id) === String(selectedCreditTypeId)), [creditTypes, selectedCreditTypeId]);
 
   useEffect(() => { if (isAuthenticated) loadInitialData(); }, [isAuthenticated]);
@@ -161,6 +177,7 @@ export default function App() {
   const tabsClient = [
     { key: 'dashboard', label: 'Accueil', icon: Home },
     { key: 'credits', label: 'Crédits', icon: CreditCard },
+    { key: 'pro', label: 'Pro', icon: Banknote },
     { key: 'simulation', label: 'Simulation', icon: Calculator },
     { key: 'chatbot', label: 'Assistant', icon: MessageCircle },
   ];
@@ -190,7 +207,7 @@ export default function App() {
   if (!isAuthenticated) {
     return (
       <SafeAreaView style={s.safe}>
-        <ScrollView contentContainerStyle={s.authWrap} keyboardShouldPersistTaps="handled">
+        <ScrollView contentContainerStyle={[s.authWrap, isCompact && { padding: SPACING.lg, gap: SPACING.lg }]} keyboardShouldPersistTaps="handled">
           <View style={s.authHeader}>
             <Image source={ATB_LOGO} style={s.authLogo} resizeMode="contain" />
             <Text style={s.authTitle}>ATB</Text>
@@ -234,6 +251,19 @@ export default function App() {
   // ─── MAIN APP ───
   const loans = dashboard?.loans || [];
   const requests = dashboard?.requests || [];
+  const filteredCreditTypes = useMemo(() => creditTypes.filter((t) => {
+    const matchQuery = t.name.toLowerCase().includes(creditSearchQuery.trim().toLowerCase());
+    const matchState = !creditOnlyActive || Boolean(t.isActive);
+    return matchQuery && matchState;
+  }), [creditOnlyActive, creditSearchQuery, creditTypes]);
+  const topRecommendedTypes = useMemo(() => [...creditTypes]
+    .filter((t) => t.isActive)
+    .sort((a, b) => Number(a.annualRate) - Number(b.annualRate))
+    .slice(0, 3), [creditTypes]);
+  const debtRatio = Number(estimationResult?.estimation?.debtRatio || 0);
+  const riskLevel = debtRatio <= 0.35 ? 'Faible' : debtRatio <= 0.45 ? 'Moyen' : 'Eleve';
+  const riskColor = debtRatio <= 0.35 ? COLORS.success : debtRatio <= 0.45 ? COLORS.warning : COLORS.error;
+  const scoreWidth = `${Math.max(4, Math.min(100, debtRatio * 100))}%`;
 
   const filteredAdminRequests = adminRequests.filter((r) => {
     const searchMatch = (r.User?.fullName || '').toLowerCase().includes(adminSearchQuery.toLowerCase());
@@ -244,12 +274,12 @@ export default function App() {
   return (
     <SafeAreaView style={s.safe}>
       {/* Header */}
-      <View style={s.header}>
+      <View style={[s.header, isCompact && s.headerCompact]}>
         <View style={s.headerLeft}>
           <Image source={ATB_LOGO} style={s.headerLogo} resizeMode="contain" />
           <View>
             <Text style={s.headerGreet}>Bonjour 👋</Text>
-            <Text style={s.headerName}>{user?.fullName}</Text>
+            <Text style={[s.headerName, isTiny && { fontSize: 14 }]} numberOfLines={1}>{user?.fullName}</Text>
           </View>
         </View>
         <View style={s.headerRight}>
@@ -262,7 +292,7 @@ export default function App() {
         </View>
       </View>
 
-      <ScrollView style={s.body} contentContainerStyle={s.bodyContent} refreshControl={<RefreshControl refreshing={isLoadingData} onRefresh={loadInitialData} tintColor={COLORS.primary} />}>
+      <ScrollView style={s.body} contentContainerStyle={[s.bodyContent, isCompact && { padding: SPACING.md }]} refreshControl={<RefreshControl refreshing={isLoadingData} onRefresh={loadInitialData} tintColor={COLORS.primary} />}>
         {notice ? <View style={s.noticeBanner}><CheckCircle2 size={16} color={COLORS.success} /><Text style={s.noticeText}>{notice}</Text></View> : null}
         {error ? <View style={s.errorBanner}><XCircle size={16} color={COLORS.error} /><Text style={s.errorText}>{error}</Text></View> : null}
 
@@ -271,12 +301,12 @@ export default function App() {
         {/* ── DASHBOARD ── */}
         {view === 'dashboard' && (
           <>
-            <LinearGradient colors={[COLORS.gradientStart, COLORS.gradientEnd]} style={s.balanceCard} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }}>
+            <LinearGradient colors={[COLORS.gradientStart, COLORS.gradientEnd]} style={[s.balanceCard, isTiny && { padding: SPACING.lg }]} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }}>
               <View style={s.balanceTop}>
                 <Text style={s.balanceLabel}>Solde disponible</Text>
                 <Wallet size={22} color="rgba(255,255,255,0.7)" />
               </View>
-              <Text style={s.balanceAmount}>{formatMoney(dashboard?.client?.balance)}</Text>
+              <Text style={[s.balanceAmount, isCompact && { fontSize: 26 }]}>{formatMoney(dashboard?.client?.balance)}</Text>
               <View style={s.balanceBottom}>
                 <Text style={s.balanceSalary}>Salaire : {formatMoney(dashboard?.client?.salary)}</Text>
               </View>
@@ -287,6 +317,15 @@ export default function App() {
             <View style={s.kpiRow}>
               <KpiCard icon={CreditCard} label="Crédits" value={loans.length} color={COLORS.secondary} />
               <KpiCard icon={Clock} label="Demandes" value={requests.length} color={COLORS.warning} />
+            </View>
+            <View style={[s.kpiRow, { marginTop: 2 }]}>
+              <KpiCard icon={Banknote} label="Offres pro" value={PRO_CREDIT_CATALOG.length} color={COLORS.primary} />
+              <KpiCard icon={TrendingUp} label="Type actif" value={selectedType?.name || '-'} color={COLORS.success} />
+            </View>
+
+            <View style={s.quickActionRow}>
+              <PrimaryButton label="Voir crédits Pro" onPress={() => setView('pro')} />
+              <SecondaryButton label="Démarrer simulation" onPress={() => setView('simulation')} />
             </View>
 
             <SectionCard>
@@ -317,7 +356,23 @@ export default function App() {
         {view === 'credits' && (
           <SectionCard>
             <SectionTitle>Types de crédits</SectionTitle>
-            {creditTypes.length === 0 ? <EmptyState icon="📁" title="Aucun type" description="Vérifiez les données seed." /> : creditTypes.map((t) => {
+            <View style={s.creditFilters}>
+              <View style={[s.input, s.creditSearchInput]}>
+                <Search size={16} color={COLORS.textLight} />
+                <TextInput
+                  style={s.creditSearchText}
+                  placeholder="Rechercher un crédit..."
+                  placeholderTextColor={COLORS.textLight}
+                  value={creditSearchQuery}
+                  onChangeText={setCreditSearchQuery}
+                />
+              </View>
+              <Pressable style={[s.filterChip, creditOnlyActive && s.filterChipActive]} onPress={() => setCreditOnlyActive((v) => !v)}>
+                <Filter size={14} color={creditOnlyActive ? COLORS.white : COLORS.textLight} />
+                <Text style={[s.filterChipText, creditOnlyActive && s.filterChipTextActive]}>Actifs seulement</Text>
+              </Pressable>
+            </View>
+            {filteredCreditTypes.length === 0 ? <EmptyState icon="📁" title="Aucun type" description="Aucun résultat pour ce filtre." /> : filteredCreditTypes.map((t) => {
               const active = String(t.id) === String(selectedCreditTypeId);
               return (
                 <Pressable key={t.id} style={[s.creditType, active && s.creditTypeActive]} onPress={() => setSelectedCreditTypeId(String(t.id))}>
@@ -336,6 +391,88 @@ export default function App() {
           </SectionCard>
         )}
 
+        {/* ── PRO CREDITS ── */}
+        {view === 'pro' && (
+          <>
+            <SectionCard>
+              <SectionTitle>Solutions de crédit pro</SectionTitle>
+              <Text style={s.proLead}>
+                Offres premium avec traitement prioritaire, accompagnement dossier et suivi digital.
+              </Text>
+              {PRO_CREDIT_CATALOG.map((offer) => (
+                <View key={offer.name} style={s.proCard}>
+                  <View style={s.listItemHead}>
+                    <Text style={s.listItemTitle}>{offer.name}</Text>
+                    <View style={s.rateTag}>
+                      <Text style={s.rateTagText}>Réponse {offer.speed}</Text>
+                    </View>
+                  </View>
+                  <Text style={s.listItemSub}>{offer.target}</Text>
+                </View>
+              ))}
+            </SectionCard>
+
+            <SectionCard>
+              <SectionTitle>Fonctionnalités Pro</SectionTitle>
+              <View style={s.proFeatureItem}>
+                <CheckCircle2 size={16} color={COLORS.success} />
+                <Text style={s.proFeatureText}>Pré-analyse rapide du dossier en 3 étapes.</Text>
+              </View>
+              <View style={s.proFeatureItem}>
+                <CheckCircle2 size={16} color={COLORS.success} />
+                <Text style={s.proFeatureText}>Priorisation automatique des demandes urgentes.</Text>
+              </View>
+              <View style={s.proFeatureItem}>
+                <CheckCircle2 size={16} color={COLORS.success} />
+                <Text style={s.proFeatureText}>Orientation instantanée vers la meilleure offre.</Text>
+              </View>
+              <View style={s.proFeatureItem}>
+                <CheckCircle2 size={16} color={COLORS.success} />
+                <Text style={s.proFeatureText}>Suivi du statut et assistance dans l'application.</Text>
+              </View>
+              <View style={s.quickActionRow}>
+                <PrimaryButton label="Lancer une simulation pro" onPress={() => setView('simulation')} />
+              </View>
+            </SectionCard>
+
+            <SectionCard>
+              <SectionTitle>Recommandations intelligentes</SectionTitle>
+              {topRecommendedTypes.length === 0 ? (
+                <EmptyState icon="✨" title="Aucune offre active" description="Activez des produits dans l'admin pour voir les recommandations." />
+              ) : topRecommendedTypes.map((offer, idx) => (
+                <View key={offer.id} style={s.recoCard}>
+                  <View style={s.listItemHead}>
+                    <Text style={s.listItemTitle}>#{idx + 1} {offer.name}</Text>
+                    <Text style={s.recoRate}>{offer.annualRate}%</Text>
+                  </View>
+                  <Text style={s.listItemSub}>Durée optimale : {offer.minDurationMonths}-{offer.maxDurationMonths} mois</Text>
+                  <SecondaryButton label="Utiliser pour simulation" onPress={() => { setSelectedCreditTypeId(String(offer.id)); setView('simulation'); }} />
+                </View>
+              ))}
+            </SectionCard>
+
+            <SectionCard>
+              <SectionTitle>Parcours complet</SectionTitle>
+              <View style={s.stepItem}>
+                <View style={[s.stepDot, { backgroundColor: selectedCreditTypeId ? COLORS.success : COLORS.textLight }]} />
+                <Text style={s.stepText}>1. Choisir l'offre adaptée</Text>
+              </View>
+              <View style={s.stepItem}>
+                <View style={[s.stepDot, { backgroundColor: amount && durationMonths ? COLORS.success : COLORS.textLight }]} />
+                <Text style={s.stepText}>2. Simuler montant et durée</Text>
+              </View>
+              <View style={s.stepItem}>
+                <View style={[s.stepDot, { backgroundColor: estimationResult ? COLORS.success : COLORS.textLight }]} />
+                <Text style={s.stepText}>3. Analyser score et risque</Text>
+              </View>
+              <View style={s.stepItem}>
+                <View style={[s.stepDot, { backgroundColor: requests.length > 0 ? COLORS.success : COLORS.textLight }]} />
+                <Text style={s.stepText}>4. Soumettre puis suivre la demande</Text>
+              </View>
+            </SectionCard>
+          </>
+        )}
+
         {/* ── SIMULATION ── */}
         {view === 'simulation' && (
           <SectionCard>
@@ -344,8 +481,22 @@ export default function App() {
               <CreditCard size={16} color={COLORS.primary} />
               <Text style={s.chipText}>Type : {selectedType?.name || 'Aucun sélectionné'}</Text>
             </View>
+            <View style={s.presetRow}>
+              {[5000, 10000, 20000, 50000].map((presetAmount) => (
+                <Pressable key={presetAmount} style={s.presetChip} onPress={() => setAmount(String(presetAmount))}>
+                  <Text style={s.presetChipText}>{(presetAmount / 1000).toFixed(0)}k</Text>
+                </Pressable>
+              ))}
+            </View>
             <InputLabel>Montant (TND)</InputLabel>
             <TextInput style={s.input} keyboardType="numeric" value={amount} onChangeText={setAmount} placeholder="Ex: 10000" placeholderTextColor={COLORS.textLight} />
+            <View style={s.presetRow}>
+              {[12, 24, 36, 60].map((presetDuration) => (
+                <Pressable key={presetDuration} style={s.presetChip} onPress={() => setDurationMonths(String(presetDuration))}>
+                  <Text style={s.presetChipText}>{presetDuration}m</Text>
+                </Pressable>
+              ))}
+            </View>
             <InputLabel>Durée (mois)</InputLabel>
             <TextInput style={s.input} keyboardType="numeric" value={durationMonths} onChangeText={setDurationMonths} placeholder="Ex: 36" placeholderTextColor={COLORS.textLight} />
 
@@ -359,6 +510,15 @@ export default function App() {
                 <View style={s.resultRow}><Text style={s.resultLabel}>Coût total</Text><Text style={s.resultValue}>{formatMoney(estimationResult.estimation.totalCost)}</Text></View>
                 <View style={s.resultRow}><Text style={s.resultLabel}>Ratio endettement</Text><Text style={s.resultValue}>{formatPercent(estimationResult.estimation.debtRatio)}</Text></View>
                 <View style={s.resultRow}><Text style={s.resultLabel}>Probabilité</Text><Text style={[s.resultValue, { color: COLORS.success }]}>{formatPercent(estimationResult.estimation.acceptanceProbability)}</Text></View>
+                <View style={s.scoreWrap}>
+                  <View style={s.scoreHead}>
+                    <Text style={s.resultLabel}>Niveau de risque</Text>
+                    <Text style={[s.scoreLabel, { color: riskColor }]}>{riskLevel}</Text>
+                  </View>
+                  <View style={s.scoreTrack}>
+                    <View style={[s.scoreFill, { width: scoreWidth, backgroundColor: riskColor }]} />
+                  </View>
+                </View>
               </View>
             )}
           </SectionCard>
@@ -367,7 +527,7 @@ export default function App() {
         {/* ── CHATBOT ── */}
         {view === 'chatbot' && (
           <SectionCard style={{ flex: 1 }}>
-            <View style={s.chatHeader}><MessageCircle size={20} color={COLORS.primary} /><SectionTitle>Assistant Iram</SectionTitle></View>
+            <View style={s.chatHeader}><MessageCircle size={20} color={COLORS.primary} /><SectionTitle>Assistant ATB</SectionTitle></View>
             <View style={s.chatZone}>
               {chatMessages.length === 0 && <EmptyState icon="🤖" title="Bienvenue !" description="Posez vos questions sur les crédits." />}
               {chatMessages.map((m, i) => <ChatBubble key={i} text={m.text} isUser={m.isUser} />)}
@@ -405,7 +565,7 @@ export default function App() {
                           { name: 'Acceptées', count: adminSummary.acceptedRequests, color: COLORS.success, legendFontColor: '#7A7A7A', legendFontSize: 12 },
                           { name: 'Refusées', count: adminSummary.rejectedRequests, color: COLORS.error, legendFontColor: '#7A7A7A', legendFontSize: 12 },
                         ]}
-                        width={Dimensions.get('window').width < 600 ? Dimensions.get('window').width - 64 : 300}
+                        width={width < 600 ? width - (isCompact ? 44 : 64) : 300}
                         height={180}
                         chartConfig={{ color: () => COLORS.primary }}
                         accessor="count"
@@ -426,7 +586,7 @@ export default function App() {
                 <View style={[s.input, { flexDirection: 'row', alignItems: 'center', marginBottom: 12 }]}>
                   <Search size={20} color={COLORS.textLight} />
                   <TextInput
-                    style={{ flex: 1, marginLeft: 8, outlineStyle: 'none' }}
+                    style={{ flex: 1, marginLeft: 8 }}
                     placeholder="Rechercher par nom..."
                     value={adminSearchQuery}
                     onChangeText={setAdminSearchQuery}
@@ -507,12 +667,12 @@ export default function App() {
       {adminSelectedRequest && (
         <Modal transparent animationType="fade" visible={true} onRequestClose={() => setAdminSelectedRequest(null)}>
           <View style={s.modalOverlay}>
-            <View style={s.modalContent}>
+            <View style={[s.modalContent, isCompact && s.modalContentCompact]}>
               <View style={s.modalHeader}>
                 <Text style={s.modalTitle}>Détail du Dossier</Text>
                 <TouchableOpacity onPress={() => setAdminSelectedRequest(null)}><XCircle size={24} color={COLORS.textLight} /></TouchableOpacity>
               </View>
-              <ScrollView style={{ padding: SPACING.lg, maxHeight: Dimensions.get('window').height * 0.7 }}>
+              <ScrollView style={{ padding: isCompact ? SPACING.md : SPACING.lg, maxHeight: height * 0.7 }}>
                 <SectionTitle>Informations Client</SectionTitle>
                 <View style={[s.resultRow, { marginBottom: 4 }]}><Text style={s.resultLabel}>Nom</Text><Text style={s.resultValue}>{adminSelectedRequest.User?.fullName}</Text></View>
                 <View style={[s.resultRow, { marginBottom: 4 }]}><Text style={s.resultLabel}>Email</Text><Text style={s.resultValue}>{adminSelectedRequest.User?.email}</Text></View>
@@ -579,11 +739,12 @@ const s = StyleSheet.create({
   authToggleBtnActive: { backgroundColor: COLORS.primary, ...SHADOW.elevated },
   authToggleText: { fontFamily: FONTS.bold, color: COLORS.textSecondary, fontSize: 14 },
   authToggleTextActive: { color: COLORS.white },
-  rowInputs: { flexDirection: 'row', gap: SPACING.sm },
+  rowInputs: { flexDirection: 'row', gap: SPACING.sm, flexWrap: 'wrap' },
   input: { borderWidth: 1, borderColor: COLORS.border, borderRadius: RADIUS.md, paddingHorizontal: 14, paddingVertical: 13, backgroundColor: COLORS.surface, color: COLORS.text, fontFamily: FONTS.medium, fontSize: 14 },
   helper: { fontSize: 11, color: COLORS.textLight, fontFamily: FONTS.regular, textAlign: 'center', lineHeight: 17 },
   // Header
   header: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: SPACING.lg, paddingVertical: SPACING.md, backgroundColor: COLORS.white, borderBottomWidth: 1, borderBottomColor: COLORS.borderLight },
+  headerCompact: { paddingHorizontal: SPACING.md },
   headerLeft: { flexDirection: 'row', alignItems: 'center', gap: 10, flexShrink: 1 },
   headerLogo: { width: 34, height: 34, borderRadius: 10 },
   headerGreet: { fontFamily: FONTS.medium, fontSize: 12, color: COLORS.textSecondary },
@@ -592,7 +753,7 @@ const s = StyleSheet.create({
   headerIconBtn: { width: 38, height: 38, borderRadius: 12, backgroundColor: COLORS.surfaceAlt, alignItems: 'center', justifyContent: 'center' },
   // Body
   body: { flex: 1 },
-  bodyContent: { padding: SPACING.lg, gap: SPACING.md, paddingBottom: 24 },
+  bodyContent: { padding: SPACING.lg, gap: SPACING.md, paddingBottom: 24, width: '100%', maxWidth: 980, alignSelf: 'center' },
   // Notices
   noticeBanner: { flexDirection: 'row', alignItems: 'center', gap: 8, backgroundColor: COLORS.successBg, borderRadius: RADIUS.md, padding: SPACING.md },
   noticeText: { color: COLORS.success, fontFamily: FONTS.semiBold, fontSize: 13, flex: 1 },
@@ -610,13 +771,16 @@ const s = StyleSheet.create({
   balanceDecor: { position: 'absolute', top: -40, right: -40, width: 140, height: 140, borderRadius: 70, backgroundColor: 'rgba(255,255,255,0.08)' },
   balanceDecor2: { position: 'absolute', bottom: -50, left: -30, width: 120, height: 120, borderRadius: 60, backgroundColor: 'rgba(255,255,255,0.05)' },
   // KPI
-  kpiRow: { flexDirection: 'row', gap: SPACING.md },
+  kpiRow: { flexDirection: 'row', gap: SPACING.md, flexWrap: 'wrap' },
   // List items
   listItem: { borderWidth: 1, borderColor: COLORS.borderLight, borderRadius: RADIUS.md, padding: SPACING.md, gap: 4, backgroundColor: COLORS.surface },
   listItemHead: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', gap: 8 },
   listItemTitle: { fontFamily: FONTS.bold, color: COLORS.text, fontSize: 14, flexShrink: 1 },
-  listItemSub: { fontFamily: FONTS.regular, color: COLORS.textSecondary, fontSize: 13 },
+  listItemSub: { fontFamily: FONTS.regular, color: COLORS.textSecondary, fontSize: 13, lineHeight: 19 },
   // Credit types
+  creditFilters: { gap: 10, marginBottom: 4 },
+  creditSearchInput: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  creditSearchText: { flex: 1, fontFamily: FONTS.medium, fontSize: 14, color: COLORS.text },
   creditType: { borderWidth: 1.5, borderColor: COLORS.border, borderRadius: RADIUS.lg, padding: SPACING.lg, gap: 4, backgroundColor: COLORS.surface },
   creditTypeActive: { borderColor: COLORS.primary, backgroundColor: COLORS.primary + '08' },
   rateTag: { backgroundColor: COLORS.primary + '12', borderRadius: RADIUS.full, paddingHorizontal: 10, paddingVertical: 4 },
@@ -625,17 +789,36 @@ const s = StyleSheet.create({
   // Simulation
   chipRow: { flexDirection: 'row', alignItems: 'center', gap: 8, backgroundColor: COLORS.surfaceAlt, borderRadius: RADIUS.sm, padding: SPACING.sm },
   chipText: { fontFamily: FONTS.semiBold, fontSize: 13, color: COLORS.primary },
+  presetRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
+  presetChip: { borderWidth: 1, borderColor: COLORS.border, borderRadius: RADIUS.full, paddingHorizontal: 12, paddingVertical: 6, backgroundColor: COLORS.surfaceAlt },
+  presetChipText: { fontFamily: FONTS.semiBold, fontSize: 12, color: COLORS.textSecondary },
   resultCard: { backgroundColor: COLORS.surfaceAlt, borderRadius: RADIUS.md, padding: SPACING.lg, gap: 10, marginTop: 8 },
   resultTitle: { fontFamily: FONTS.bold, fontSize: 15, color: COLORS.text, marginBottom: 4 },
   resultRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
   resultLabel: { fontFamily: FONTS.medium, fontSize: 13, color: COLORS.textSecondary },
   resultValue: { fontFamily: FONTS.bold, fontSize: 15, color: COLORS.text },
+  scoreWrap: { gap: 8, marginTop: 4 },
+  scoreHead: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
+  scoreLabel: { fontFamily: FONTS.bold, fontSize: 13 },
+  scoreTrack: { width: '100%', height: 8, borderRadius: RADIUS.full, backgroundColor: COLORS.border, overflow: 'hidden' },
+  scoreFill: { height: '100%', borderRadius: RADIUS.full },
   // Chat
   chatHeader: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   chatZone: { minHeight: 200, gap: 4 },
   chatInputRow: { flexDirection: 'row', gap: 8, alignItems: 'center' },
   chatInput: { flex: 1, borderWidth: 1, borderColor: COLORS.border, borderRadius: RADIUS.full, paddingHorizontal: 16, paddingVertical: 12, backgroundColor: COLORS.surface, fontFamily: FONTS.medium, fontSize: 14, color: COLORS.text },
   chatSendBtn: { width: 44, height: 44, borderRadius: 22, backgroundColor: COLORS.primary, alignItems: 'center', justifyContent: 'center', ...SHADOW.elevated },
+  // Pro
+  proLead: { fontFamily: FONTS.regular, color: COLORS.textSecondary, fontSize: 13, lineHeight: 20 },
+  proCard: { borderWidth: 1, borderColor: COLORS.borderLight, borderRadius: RADIUS.md, padding: SPACING.md, gap: 4, backgroundColor: COLORS.surfaceAlt },
+  recoCard: { borderWidth: 1, borderColor: COLORS.border, borderRadius: RADIUS.md, padding: SPACING.md, gap: 8, backgroundColor: COLORS.surface },
+  recoRate: { fontFamily: FONTS.bold, fontSize: 14, color: COLORS.primary },
+  proFeatureItem: { flexDirection: 'row', alignItems: 'center', gap: 8, backgroundColor: COLORS.surfaceAlt, borderRadius: RADIUS.sm, padding: SPACING.sm },
+  proFeatureText: { flex: 1, fontFamily: FONTS.medium, fontSize: 13, color: COLORS.text },
+  quickActionRow: { gap: 10 },
+  stepItem: { flexDirection: 'row', alignItems: 'center', gap: 10, paddingVertical: 4 },
+  stepDot: { width: 10, height: 10, borderRadius: RADIUS.full },
+  stepText: { fontFamily: FONTS.medium, fontSize: 13, color: COLORS.textSecondary },
   // Admin
   adminGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: SPACING.md },
   adminActions: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 8 },
@@ -643,6 +826,7 @@ const s = StyleSheet.create({
   adminBtnText: { color: COLORS.white, fontFamily: FONTS.bold, fontSize: 12 },
   modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'center', alignItems: 'center' },
   modalContent: { backgroundColor: COLORS.white, width: '90%', maxWidth: 500, borderRadius: RADIUS.xl, overflow: 'hidden' },
+  modalContentCompact: { width: '96%' },
   modalHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', padding: SPACING.lg, borderBottomWidth: 1, borderColor: COLORS.border },
   modalTitle: { fontFamily: FONTS.bold, fontSize: 18, color: COLORS.primaryDark },
   filterChip: { paddingHorizontal: 16, paddingVertical: 8, borderRadius: 20, backgroundColor: COLORS.surface, borderWidth: 1, borderColor: COLORS.border },

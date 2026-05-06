@@ -38,17 +38,18 @@ export function EmptyState({ icon, title, description }) {
 
 // ── Bottom Tab Bar ──
 export function BottomTabBar({ tabs, active, onPress }) {
+  const compactTabs = tabs.length >= 5;
   return (
-    <View style={cStyles.tabBar}>
+    <View style={[cStyles.tabBar, compactTabs && cStyles.tabBarCompact]}>
       {tabs.map((tab) => {
         const isActive = active === tab.key;
         const Icon = tab.icon;
         return (
           <Pressable key={tab.key} style={cStyles.tabItem} onPress={() => onPress(tab.key)}>
-            <View style={[cStyles.tabIconWrap, isActive && cStyles.tabIconWrapActive]}>
-              <Icon size={20} color={isActive ? COLORS.white : COLORS.textSecondary} strokeWidth={isActive ? 2.2 : 1.8} />
+            <View style={[cStyles.tabIconWrap, compactTabs && cStyles.tabIconWrapCompact, isActive && cStyles.tabIconWrapActive]}>
+              <Icon size={compactTabs ? 18 : 20} color={isActive ? COLORS.white : COLORS.textSecondary} strokeWidth={isActive ? 2.2 : 1.8} />
             </View>
-            <Text style={[cStyles.tabLabel, isActive && cStyles.tabLabelActive]}>{tab.label}</Text>
+            <Text style={[cStyles.tabLabel, compactTabs && cStyles.tabLabelCompact, isActive && cStyles.tabLabelActive]}>{tab.label}</Text>
           </Pressable>
         );
       })}
@@ -135,10 +136,13 @@ const cStyles = StyleSheet.create({
     flexDirection: 'row', backgroundColor: COLORS.white, borderTopWidth: 1, borderTopColor: COLORS.borderLight,
     paddingBottom: 18, paddingTop: 8, ...SHADOW.soft,
   },
+  tabBarCompact: { paddingBottom: 12, paddingTop: 6 },
   tabItem: { flex: 1, alignItems: 'center', gap: 3 },
   tabIconWrap: { width: 36, height: 36, borderRadius: 12, alignItems: 'center', justifyContent: 'center' },
+  tabIconWrapCompact: { width: 32, height: 32, borderRadius: 10 },
   tabIconWrapActive: { backgroundColor: COLORS.primary },
   tabLabel: { fontFamily: FONTS.medium, fontSize: 10, color: COLORS.textSecondary },
+  tabLabelCompact: { fontSize: 9 },
   tabLabelActive: { color: COLORS.primary, fontFamily: FONTS.bold },
   // KPI
   kpiCard: { flex: 1, backgroundColor: COLORS.white, borderRadius: RADIUS.lg, padding: SPACING.lg, gap: 6, ...SHADOW.card },

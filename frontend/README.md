@@ -15,3 +15,4 @@ Edit `src/api.js` if needed.
 Default is `http://10.0.2.2:4000/api` (Android emulator to localhost).
 
 For physical device, replace with your machine LAN IP, e.g. `http://192.168.1.20:4000/api`.
+https://atb.tn/credits
