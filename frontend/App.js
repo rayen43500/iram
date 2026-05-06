@@ -6,7 +6,7 @@ import {
 } from 'react-native';
 import { Inter_400Regular, Inter_500Medium, Inter_600SemiBold, Inter_700Bold, Inter_800ExtraBold, useFonts } from '@expo-google-fonts/inter';
 import { LinearGradient } from 'expo-linear-gradient';
-import { Home, CreditCard, Calculator, MessageCircle, ShieldCheck, Wallet, Banknote, LogOut, RefreshCw, User, Send, ChevronRight, TrendingUp, Clock, CheckCircle2, XCircle, BarChart3, Users, FileText, Search, Filter } from 'lucide-react-native';
+import { Home, CreditCard, Calculator, MessageCircle, ShieldCheck, Wallet, Banknote, LogOut, RefreshCw, User, Send, ChevronRight, TrendingUp, Clock, CheckCircle2, XCircle, BarChart3, Users, FileText, Search, Filter, Eye, EyeOff } from 'lucide-react-native';
 import { PieChart, BarChart } from 'react-native-chart-kit';
 import { apiRequest } from './src/api';
 import { COLORS, FONTS, RADIUS, SHADOW, SPACING } from './src/theme';
@@ -63,6 +63,7 @@ export default function App() {
   const [adminRejectionReason, setAdminRejectionReason] = useState('');
   const [creditSearchQuery, setCreditSearchQuery] = useState('');
   const [creditOnlyActive, setCreditOnlyActive] = useState(false);
+  const [passwordVisible, setPasswordVisible] = useState(false);
 
   const isAuthenticated = Boolean(token && user);
   const isAdmin = user?.role === 'admin';
@@ -242,7 +243,31 @@ export default function App() {
               </>
             )}
             <TextInput style={s.input} value={email} onChangeText={setEmail} autoCapitalize="none" placeholder="Email" placeholderTextColor={COLORS.textLight} keyboardType="email-address" />
-            <TextInput style={s.input} value={password} onChangeText={setPassword} secureTextEntry placeholder="Mot de passe" placeholderTextColor={COLORS.textLight} />
+            <View style={s.passwordField}>
+              <TextInput
+                style={s.passwordInput}
+                value={password}
+                onChangeText={setPassword}
+                secureTextEntry={!passwordVisible}
+                placeholder="Mot de passe"
+                placeholderTextColor={COLORS.textLight}
+                autoCapitalize="none"
+                autoCorrect={false}
+                accessibilityLabel="Mot de passe"
+                textContentType="password"
+                autoComplete={passwordVisible ? 'off' : 'password'}
+                importantForAutofill="yes"
+              />
+              <Pressable
+                style={({ pressed }) => [s.passwordReveal, pressed && { opacity: 0.7 }]}
+                onPress={() => setPasswordVisible((v) => !v)}
+                hitSlop={12}
+                accessibilityRole="button"
+                accessibilityLabel={passwordVisible ? 'Masquer le mot de passe' : 'Afficher le mot de passe'}
+              >
+                {passwordVisible ? <EyeOff size={22} color={COLORS.primary} strokeWidth={2} /> : <Eye size={22} color={COLORS.textSecondary} strokeWidth={2} />}
+              </Pressable>
+            </View>
 
             <PrimaryButton label={authMode === 'login' ? 'Se connecter' : 'Créer le compte'} onPress={authMode === 'login' ? onLogin : onRegister} disabled={isAuthBusy} loading={isAuthBusy} />
 
@@ -739,6 +764,9 @@ const s = StyleSheet.create({
   authToggleText: { fontFamily: FONTS.bold, color: COLORS.textSecondary, fontSize: 14 },
   authToggleTextActive: { color: COLORS.white },
   rowInputs: { flexDirection: 'row', gap: SPACING.sm, flexWrap: 'wrap' },
+  passwordField: { flexDirection: 'row', alignItems: 'center', borderWidth: 1, borderColor: COLORS.border, borderRadius: RADIUS.md, backgroundColor: COLORS.surface, minHeight: 48 },
+  passwordInput: { flex: 1, paddingHorizontal: 14, paddingVertical: 13, fontFamily: FONTS.medium, fontSize: 14, color: COLORS.text, minWidth: 0 },
+  passwordReveal: { paddingHorizontal: 10, justifyContent: 'center', alignItems: 'center', alignSelf: 'stretch' },
   input: { borderWidth: 1, borderColor: COLORS.border, borderRadius: RADIUS.md, paddingHorizontal: 14, paddingVertical: 13, backgroundColor: COLORS.surface, color: COLORS.text, fontFamily: FONTS.medium, fontSize: 14 },
   helper: { fontSize: 11, color: COLORS.textLight, fontFamily: FONTS.regular, textAlign: 'center', lineHeight: 17 },
   // Header
