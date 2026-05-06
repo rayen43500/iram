@@ -1,4 +1,5 @@
 const bcrypt = require('bcryptjs');
+const { Op } = require('sequelize');
 const { faker } = require('@faker-js/faker');
 const { connectDb } = require('./config/db');
 const CreditType = require('./models/CreditType');
@@ -7,43 +8,93 @@ const Loan = require('./models/Loan');
 const CreditRequest = require('./models/CreditRequest');
 
 const DEFAULT_CREDIT_TYPES = [
-    {
-      name: 'Credit personnel',
-      slug: 'credit-personnel',
-      description: 'Pret personnel pour besoins divers.',
-      minAmount: 1000,
-      maxAmount: 30000,
-      minDurationMonths: 6,
-      maxDurationMonths: 84,
-      annualRate: 7.5,
-      requiredDocuments: ['piece identite', 'bulletins salaire', 'justificatif domicile'],
-      isActive: true,
-    },
-    {
-      name: 'Credit auto',
-      slug: 'credit-auto',
-      description: 'Financement de vehicule neuf ou occasion.',
-      minAmount: 3000,
-      maxAmount: 60000,
-      minDurationMonths: 12,
-      maxDurationMonths: 84,
-      annualRate: 6.2,
-      requiredDocuments: ['piece identite', 'devis vehicule', 'releves bancaires'],
-      isActive: true,
-    },
-    {
-      name: 'Credit immobilier',
-      slug: 'credit-immobilier',
-      description: 'Financement immobilier long terme.',
-      minAmount: 30000,
-      maxAmount: 500000,
-      minDurationMonths: 60,
-      maxDurationMonths: 300,
-      annualRate: 4.9,
-      requiredDocuments: ['piece identite', 'compromis vente', 'justificatifs revenus'],
-      isActive: true,
-    },
-  ];
+  {
+    name: 'Crédit Sayara',
+    slug: 'credit-sayara',
+    description: 'Financement véhicule neuf ou d’occasion (sayara).',
+    minAmount: 3000,
+    maxAmount: 80000,
+    minDurationMonths: 12,
+    maxDurationMonths: 84,
+    annualRate: 6.35,
+    requiredDocuments: ['pièce identité', 'devis véhicule', 'relevés bancaires'],
+    isActive: true,
+  },
+  {
+    name: 'Crédit Sakan',
+    slug: 'credit-sakan',
+    description: 'Crédit logement principal ou résidence secondaire (sakan).',
+    minAmount: 20000,
+    maxAmount: 500000,
+    minDurationMonths: 60,
+    maxDurationMonths: 300,
+    annualRate: 5.1,
+    requiredDocuments: ['pièce identité', 'promesse ou compromis', 'justificatifs de revenus'],
+    isActive: true,
+  },
+  {
+    name: 'Crédit Mounassib',
+    slug: 'credit-mounassib',
+    description: 'Prêt personnel à mensualités équilibrées pour vos projets.',
+    minAmount: 1500,
+    maxAmount: 50000,
+    minDurationMonths: 6,
+    maxDurationMonths: 84,
+    annualRate: 7.2,
+    requiredDocuments: ['pièce identité', 'bulletins de salaire', 'justificatif de domicile'],
+    isActive: true,
+  },
+  {
+    name: 'Crédit Tahawel',
+    slug: 'credit-tahawel',
+    description: 'Rachat ou transfert de crédits pour réduire la mensualité (tahawel).',
+    minAmount: 5000,
+    maxAmount: 200000,
+    minDurationMonths: 12,
+    maxDurationMonths: 240,
+    annualRate: 6.05,
+    requiredDocuments: ['pièce identité', 'tableaux d’amortissement', 'relevés bancaires'],
+    isActive: true,
+  },
+  {
+    name: 'Crédit Renov',
+    slug: 'credit-renov',
+    description: 'Travaux et rénovation habitat (Rénov).',
+    minAmount: 5000,
+    maxAmount: 150000,
+    minDurationMonths: 12,
+    maxDurationMonths: 180,
+    annualRate: 6.75,
+    requiredDocuments: ['pièce identité', 'devis travaux', 'titre de propriété ou bail'],
+    isActive: true,
+  },
+  {
+    name: 'Crédit START',
+    slug: 'credit-start',
+    description: 'Lancement ou développement d’activité, auto‑entrepreneur / micro‑projet.',
+    minAmount: 3000,
+    maxAmount: 100000,
+    minDurationMonths: 12,
+    maxDurationMonths: 96,
+    annualRate: 7.95,
+    requiredDocuments: ['pièce identité', 'prévisions ou business plan léger', 'RIB professionnel ou perso'],
+    isActive: true,
+  },
+  {
+    name: 'Crédit Bien être',
+    slug: 'credit-bien-etre',
+    description: 'Santé, études, formation ou confort familial.',
+    minAmount: 2000,
+    maxAmount: 40000,
+    minDurationMonths: 6,
+    maxDurationMonths: 72,
+    annualRate: 7,
+    requiredDocuments: ['pièce identité', 'quote-part ou convention (si santé)', 'justificatif de revenus'],
+    isActive: true,
+  },
+];
+
+const ACTIVE_SLUGS = DEFAULT_CREDIT_TYPES.map((t) => t.slug);
 
 async function ensureCreditTypes() {
   const creditTypes = [];
@@ -53,8 +104,13 @@ async function ensureCreditTypes() {
       where: { slug: payload.slug },
       defaults: payload,
     });
+    await creditType.update(payload);
     creditTypes.push(creditType);
   }
+
+  await CreditType.update({ isActive: false }, {
+    where: { slug: { [Op.notIn]: ACTIVE_SLUGS } },
+  });
 
   return creditTypes;
 }
@@ -155,5 +211,6 @@ if (require.main === module) {
 
 module.exports = {
   seedDatabase,
+  ensureCreditTypes,
 };
 

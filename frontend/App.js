@@ -18,14 +18,13 @@ function formatMoney(v) { return `${Number(v || 0).toLocaleString('fr-FR', { max
 function formatPercent(v) { const n = Number(v || 0) * (v <= 1 ? 100 : 1); return `${n.toFixed(1)}%`; }
 
 const PRO_CREDIT_CATALOG = [
-  { name: 'Credit Sakan', target: 'Logement principal ou secondaire', speed: '48h' },
-  { name: 'Credit ATBAWALSAKAN', target: 'Acquisition immobiliere avec accompagnement', speed: '72h' },
-  { name: 'Credit Tahawel', target: 'Refinancement et transfert de credit', speed: '24h' },
-  { name: 'Credit Sayara', target: 'Vehicule neuf ou occasion', speed: '24h' },
-  { name: 'Credit Start', target: 'Lancement de projet pro/auto-entrepreneur', speed: '72h' },
-  { name: 'Credit Mounassib', target: 'Besoin perso a mensualite equilibree', speed: '24h' },
-  { name: 'Credit Renov', target: 'Renovation et travaux habitat', speed: '48h' },
-  { name: 'Credit Bien Etre', target: 'Sante, etudes et confort familial', speed: '24h' },
+  { name: 'Crédit Sayara', target: 'Financement véhicule neuf ou d’occasion', speed: '24h' },
+  { name: 'Crédit Sakan', target: 'Logement principal ou résidence secondaire', speed: '72h' },
+  { name: 'Crédit Mounassib', target: 'Besoin personnel à mensualité équilibrée', speed: '48h' },
+  { name: 'Crédit Tahawel', target: 'Transfert et rachat de crédits', speed: '48h' },
+  { name: 'Crédit Renov', target: 'Travaux et rénovation de l’habitat', speed: '48h' },
+  { name: 'Crédit START', target: 'Lancement ou développement d’activité', speed: '72h' },
+  { name: 'Crédit Bien être', target: 'Santé, études et confort familial', speed: '24h' },
 ];
 
 export default function App() {
