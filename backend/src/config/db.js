@@ -50,7 +50,10 @@ async function connectDb({ forceSync = false } = {}) {
   initAssociations();
   await ensureDatabaseExists();
   await sequelize.authenticate();
-  await sequelize.sync({ force: Boolean(forceSync) });
+  await sequelize.sync({
+    force: Boolean(forceSync),
+    alter: Boolean(env.sequelizeAlter) && !forceSync,
+  });
   console.log('MySQL connecte');
 }
 

@@ -189,6 +189,7 @@ async function seedDatabase({ forceSync = false, skipIfNotEmpty = false, skipCon
       acceptanceProbability: 0.75,
       status: faker.helpers.arrayElement(['pending', 'accepted', 'rejected']),
       adminComment: '',
+      applicationForm: null,
     });
   }
 

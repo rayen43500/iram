@@ -3,11 +3,17 @@ const CreditRequest = require('../models/CreditRequest');
 const Loan = require('../models/Loan');
 const env = require('../config/env');
 const { buildEstimation } = require('../utils/estimate');
+const { parseApplicationForm } = require('../utils/applicationForm');
 
 async function createRequest(req, res) {
   const { creditTypeId, requestedAmount, requestedDurationMonths } = req.body;
   if (!creditTypeId || !requestedAmount || !requestedDurationMonths) {
     return res.status(400).json({ message: 'creditTypeId, requestedAmount et requestedDurationMonths sont requis' });
+  }
+
+  const formResult = parseApplicationForm(req.body);
+  if (!formResult.ok) {
+    return res.status(400).json({ message: formResult.errors.join(' '), errors: formResult.errors });
   }
 
   const normalizedAmount = Number(requestedAmount);
@@ -73,6 +79,7 @@ async function createRequest(req, res) {
     debtRatio: estimation.debtRatio,
     acceptanceProbability: estimation.acceptanceProbability,
     status: 'pending',
+    applicationForm: formResult.data,
   });
 
   return res.status(201).json(created);

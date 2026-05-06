@@ -20,6 +20,8 @@ const CreditRequest = sequelize.define(
       defaultValue: 'pending',
     },
     adminComment: { type: DataTypes.TEXT, allowNull: false, defaultValue: '' },
+    /** Données saisies par le client (formulaire de demande) */
+    applicationForm: { type: DataTypes.JSON, allowNull: true, defaultValue: null },
   },
   {
     tableName: 'credit_requests',

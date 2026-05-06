@@ -64,6 +64,13 @@ export default function App() {
   const [creditSearchQuery, setCreditSearchQuery] = useState('');
   const [creditOnlyActive, setCreditOnlyActive] = useState(false);
   const [passwordVisible, setPasswordVisible] = useState(false);
+  const [reqPhone, setReqPhone] = useState('');
+  const [reqCity, setReqCity] = useState('');
+  const [reqProfession, setReqProfession] = useState('');
+  const [reqProjectPurpose, setReqProjectPurpose] = useState('');
+  const [reqOtherIncome, setReqOtherIncome] = useState('');
+  const [reqNotes, setReqNotes] = useState('');
+  const [reqDeclareAccurate, setReqDeclareAccurate] = useState(false);
 
   const isAuthenticated = Boolean(token && user);
   const isAdmin = user?.role === 'admin';
@@ -121,6 +128,20 @@ export default function App() {
   function onLogout() {
     setToken(''); setUser(null); setView('dashboard'); setDashboard(null); setCreditTypes([]);
     setSelectedCreditTypeId(''); setEstimationResult(null); setChatMessages([]); setAdminSummary(null); setAdminRequests([]); setNotice(''); setError('');
+    setReqPhone(''); setReqCity(''); setReqProfession(''); setReqProjectPurpose('');
+    setReqOtherIncome(''); setReqNotes(''); setReqDeclareAccurate(false);
+  }
+
+  function validateCreditApplicationForm() {
+    const phoneDigits = reqPhone.replace(/\D/g, '');
+    if (phoneDigits.length < 8) return 'Téléphone : au moins 8 chiffres.';
+    if (reqCity.trim().length < 2) return 'Ville ou adresse (minimum 2 caractères).';
+    if (reqProfession.trim().length < 2) return 'Profession / situation.';
+    if (reqProjectPurpose.trim().length < 15) return "Objet du financement ou projet (minimum 15 caractères).";
+    if (!reqDeclareAccurate) return "Merci de confirmer la véracité des informations.";
+    const extra = Number(String(reqOtherIncome).replace(',', '.'));
+    if (!Number.isFinite(extra) || extra < 0) return "Revenus complémentaires invalides.";
+    return '';
   }
 
   function validateSim() {
@@ -147,10 +168,30 @@ export default function App() {
 
   async function onSubmitRequest() {
     const ve = validateSim(); if (ve) { setError(ve); return; }
+    if (!estimationResult) { setError('Calculez d’abord l’estimation, puis complétez le formulaire.'); return; }
+    const fv = validateCreditApplicationForm(); if (fv) { setError(fv); return; }
     try {
       setError(''); setNotice(''); setIsActionBusy(true);
-      await apiRequest('/requests', { method: 'POST', body: JSON.stringify({ creditTypeId: Number(selectedCreditTypeId), requestedAmount: Number(amount), requestedDurationMonths: Number(durationMonths) }) }, token);
+      const monthlyOtherIncome = Number(String(reqOtherIncome).replace(',', '.')) || 0;
+      await apiRequest('/requests', {
+        method: 'POST',
+        body: JSON.stringify({
+          creditTypeId: Number(selectedCreditTypeId),
+          requestedAmount: Number(amount),
+          requestedDurationMonths: Number(durationMonths),
+          applicationForm: {
+            phone: reqPhone.trim().replace(/\s/g, ''),
+            city: reqCity.trim(),
+            profession: reqProfession.trim(),
+            projectPurpose: reqProjectPurpose.trim(),
+            monthlyOtherIncome,
+            additionalNotes: reqNotes.trim(),
+            acceptsAccuracyDeclaration: Boolean(reqDeclareAccurate),
+          },
+        }),
+      }, token);
       await loadInitialData(); setView('dashboard'); setNotice('Demande soumise avec succès !');
+      setReqNotes(''); setReqDeclareAccurate(false);
     } catch (e) { setError(e.message || 'Envoi impossible.'); } finally { setIsActionBusy(false); }
   }
 
@@ -370,6 +411,7 @@ export default function App() {
                   <View style={s.listItemHead}><Text style={s.listItemTitle}>{r.CreditType?.name || 'Crédit'}</Text><StatusBadge status={r.status} /></View>
                   <Text style={s.listItemSub}>{formatMoney(r.requestedAmount)} sur {r.requestedDurationMonths} mois</Text>
                   <Text style={s.listItemSub}>Probabilité : {formatPercent(r.acceptanceProbability || 0)}</Text>
+                  {r.applicationForm?.phone ? <Text style={s.formMeta}>Contact dossier : {r.applicationForm.phone}</Text> : null}
                 </View>
               ))}
             </SectionCard>
@@ -452,7 +494,7 @@ export default function App() {
               </View>
               <View style={s.proFeatureItem}>
                 <CheckCircle2 size={16} color={COLORS.success} />
-                <Text style={s.proFeatureText}>Suivi du statut et assistance dans l'application.</Text>
+                <Text style={s.proFeatureText}>Suivi du statut et assistance dans {"l\u2019application"}.</Text>
               </View>
               <View style={s.quickActionRow}>
                 <PrimaryButton label="Lancer une simulation pro" onPress={() => setView('simulation')} />
@@ -462,7 +504,7 @@ export default function App() {
             <SectionCard>
               <SectionTitle>Recommandations intelligentes</SectionTitle>
               {topRecommendedTypes.length === 0 ? (
-                <EmptyState icon="✨" title="Aucune offre active" description="Activez des produits dans l'admin pour voir les recommandations." />
+                <EmptyState icon="✨" title="Aucune offre active" description={"Activez des produits dans l\u2019admin pour voir les recommandations."} />
               ) : topRecommendedTypes.map((offer, idx) => (
                 <View key={offer.id} style={s.recoCard}>
                   <View style={s.listItemHead}>
@@ -479,7 +521,7 @@ export default function App() {
               <SectionTitle>Parcours complet</SectionTitle>
               <View style={s.stepItem}>
                 <View style={[s.stepDot, { backgroundColor: selectedCreditTypeId ? COLORS.success : COLORS.textLight }]} />
-                <Text style={s.stepText}>1. Choisir l'offre adaptée</Text>
+                <Text style={s.stepText}>{"1. Choisir l\u2019offre adaptée"}</Text>
               </View>
               <View style={s.stepItem}>
                 <View style={[s.stepDot, { backgroundColor: amount && durationMonths ? COLORS.success : COLORS.textLight }]} />
@@ -524,12 +566,13 @@ export default function App() {
             <InputLabel>Durée (mois)</InputLabel>
             <TextInput style={s.input} keyboardType="numeric" value={durationMonths} onChangeText={setDurationMonths} placeholder="Ex: 36" placeholderTextColor={COLORS.textLight} />
 
-            <PrimaryButton label="Calculer l'estimation" onPress={onEstimate} disabled={isActionBusy} loading={isActionBusy} />
-            <SecondaryButton label="Soumettre la demande" onPress={onSubmitRequest} disabled={isActionBusy} />
+            <PrimaryButton label={"Calculer l\u2019estimation"} onPress={onEstimate} disabled={isActionBusy} loading={isActionBusy} />
 
-            {estimationResult && (
+            {!estimationResult ? <Text style={s.formMuted}>Après estimation, vous pourrez remplir le formulaire et envoyer la demande.</Text> : null}
+
+            {estimationResult ? (
               <View style={s.resultCard}>
-                <Text style={s.resultTitle}>Résultat de l'estimation</Text>
+                <Text style={s.resultTitle}>{"Résultat de l\u2019estimation"}</Text>
                 <View style={s.resultRow}><Text style={s.resultLabel}>Mensualité</Text><Text style={s.resultValue}>{formatMoney(estimationResult.estimation.monthlyPayment)}</Text></View>
                 <View style={s.resultRow}><Text style={s.resultLabel}>Coût total</Text><Text style={s.resultValue}>{formatMoney(estimationResult.estimation.totalCost)}</Text></View>
                 <View style={s.resultRow}><Text style={s.resultLabel}>Ratio endettement</Text><Text style={s.resultValue}>{formatPercent(estimationResult.estimation.debtRatio)}</Text></View>
@@ -544,7 +587,44 @@ export default function App() {
                   </View>
                 </View>
               </View>
-            )}
+            ) : null}
+
+            <SectionTitle>Formulaire de demande</SectionTitle>
+            <Text style={s.formHint}>Renseigné pour chaque demande de crédit. Soumission possible après estimation.</Text>
+            <InputLabel>Téléphone</InputLabel>
+            <TextInput style={s.input} value={reqPhone} onChangeText={setReqPhone} placeholder="+216 XX XXX XXX" keyboardType="phone-pad" placeholderTextColor={COLORS.textLight} />
+            <InputLabel>Ville / adresse</InputLabel>
+            <TextInput style={s.input} value={reqCity} onChangeText={setReqCity} placeholder="Ville, rue…" placeholderTextColor={COLORS.textLight} />
+            <InputLabel>Profession / situation</InputLabel>
+            <TextInput style={s.input} value={reqProfession} onChangeText={setReqProfession} placeholder="Employé, rentier, auto-entrepreneur…" placeholderTextColor={COLORS.textLight} />
+            <InputLabel>Objet du financement (projet)</InputLabel>
+            <TextInput
+              style={[s.input, s.formTextArea]}
+              value={reqProjectPurpose}
+              onChangeText={setReqProjectPurpose}
+              placeholder={"D\u00e9crivez le projet financ\u00e9 (min. 15 caract\u00e8res)"}
+              placeholderTextColor={COLORS.textLight}
+              multiline
+              textAlignVertical="top"
+            />
+            <InputLabel>Autres revenus mensuels (TND, optionnel)</InputLabel>
+            <TextInput style={s.input} value={reqOtherIncome} onChangeText={setReqOtherIncome} placeholder="0" keyboardType="decimal-pad" placeholderTextColor={COLORS.textLight} />
+            <InputLabel>Remarques complémentaires (optionnel)</InputLabel>
+            <TextInput
+              style={[s.input, s.formTextArea]}
+              value={reqNotes}
+              onChangeText={setReqNotes}
+              placeholder={"Note pour la banque (optionnel)"}
+              placeholderTextColor={COLORS.textLight}
+              multiline
+              textAlignVertical="top"
+            />
+            <Pressable style={s.checkboxRow} onPress={() => setReqDeclareAccurate((x) => !x)} accessibilityRole="checkbox" accessibilityState={{ checked: reqDeclareAccurate }}>
+              <View style={[s.checkboxBox, reqDeclareAccurate && s.checkboxBoxOn]}>{reqDeclareAccurate ? <CheckCircle2 size={14} color={COLORS.white} /> : null}</View>
+              <Text style={s.checkboxLabel}>Je certifie que les informations fournies sont exactes.</Text>
+            </Pressable>
+
+            <SecondaryButton label="Soumettre la demande" onPress={onSubmitRequest} disabled={isActionBusy || !estimationResult} />
           </SectionCard>
         )}
 
@@ -708,6 +788,22 @@ export default function App() {
                 <View style={[s.resultRow, { marginBottom: 4 }]}><Text style={s.resultLabel}>Durée</Text><Text style={s.resultValue}>{adminSelectedRequest.requestedDurationMonths} mois</Text></View>
                 <View style={[s.resultRow, { marginBottom: 16 }]}><Text style={s.resultLabel}>Probabilité IA</Text><Text style={s.resultValue}>{formatPercent(adminSelectedRequest.acceptanceProbability)}</Text></View>
 
+                {adminSelectedRequest.applicationForm && typeof adminSelectedRequest.applicationForm === 'object' ? (
+                  <>
+                    <SectionTitle>Formulaire client</SectionTitle>
+                    <View style={[s.resultRow, { marginBottom: 4 }]}><Text style={s.resultLabel}>Téléphone</Text><Text style={s.resultValue}>{String(adminSelectedRequest.applicationForm.phone || '—')}</Text></View>
+                    <View style={[s.resultRow, { marginBottom: 4 }]}><Text style={s.resultLabel}>Ville / adresse</Text><Text style={[s.resultValue, { flex: 1.2, textAlign: 'right' }]}>{String(adminSelectedRequest.applicationForm.city || '—')}</Text></View>
+                    <View style={[s.resultRow, { marginBottom: 4 }]}><Text style={s.resultLabel}>Profession</Text><Text style={[s.resultValue, { flex: 1.2, textAlign: 'right' }]}>{String(adminSelectedRequest.applicationForm.profession || '—')}</Text></View>
+                    <View style={[s.resultRow, { marginBottom: 4, alignItems: 'flex-start' }]}><Text style={s.resultLabel}>Projet</Text><Text style={[s.resultValue, { flex: 1, textAlign: 'right', flexWrap: 'wrap' }]}>{String(adminSelectedRequest.applicationForm.projectPurpose || '—')}</Text></View>
+                    <View style={[s.resultRow, { marginBottom: 4 }]}><Text style={s.resultLabel}>Autres revenus / mois</Text><Text style={s.resultValue}>{formatMoney(adminSelectedRequest.applicationForm.monthlyOtherIncome || 0)}</Text></View>
+                    {adminSelectedRequest.applicationForm.additionalNotes ? (
+                      <View style={[s.resultRow, { marginBottom: 16, alignItems: 'flex-start' }]}><Text style={s.resultLabel}>Remarques</Text><Text style={[s.resultValue, { flex: 1, textAlign: 'right' }]}>{String(adminSelectedRequest.applicationForm.additionalNotes)}</Text></View>
+                    ) : (
+                      <View style={{ marginBottom: 16 }} />
+                    )}
+                  </>
+                ) : null}
+
                 <SectionTitle>Scoring et Décision</SectionTitle>
                 <View style={[s.resultRow, { marginBottom: 16 }]}>
                   <Text style={s.resultLabel}>Ratio d'endettement estimé</Text>
@@ -722,7 +818,7 @@ export default function App() {
                     <PrimaryButton label="✔ Accepter le crédit" onPress={() => onUpdateRequestStatus(adminSelectedRequest.id, 'accepted')} disabled={isActionBusy} />
                     <View style={{ borderTopWidth: 1, borderColor: COLORS.border, paddingTop: 12 }}>
                       <InputLabel>Motif de refus (optionnel)</InputLabel>
-                      <TextInput style={s.input} value={adminRejectionReason} onChangeText={setAdminRejectionReason} placeholder="Ex: Ratio d'endettement trop élevé" />
+                      <TextInput style={s.input} value={adminRejectionReason} onChangeText={setAdminRejectionReason} placeholder={"Ex: ratio d\u2019endettement trop \u00e9lev\u00e9"} />
                       <SecondaryButton label="✖ Refuser le crédit" onPress={() => onUpdateRequestStatus(adminSelectedRequest.id, 'rejected', adminRejectionReason)} disabled={isActionBusy} />
                     </View>
                   </View>
@@ -819,6 +915,24 @@ const s = StyleSheet.create({
   presetRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
   presetChip: { borderWidth: 1, borderColor: COLORS.border, borderRadius: RADIUS.full, paddingHorizontal: 12, paddingVertical: 6, backgroundColor: COLORS.surfaceAlt },
   presetChipText: { fontFamily: FONTS.semiBold, fontSize: 12, color: COLORS.textSecondary },
+  formHint: { fontFamily: FONTS.medium, fontSize: 12, color: COLORS.textSecondary, lineHeight: 18 },
+  formMuted: { fontFamily: FONTS.medium, fontSize: 13, color: COLORS.warning, marginTop: -4 },
+  formTextArea: { minHeight: 88, paddingTop: 12 },
+  formMeta: { fontFamily: FONTS.medium, fontSize: 12, color: COLORS.primary },
+  checkboxRow: { flexDirection: 'row', alignItems: 'flex-start', gap: 12, paddingVertical: 4 },
+  checkboxBox: {
+    width: 22,
+    height: 22,
+    borderRadius: 6,
+    borderWidth: 2,
+    borderColor: COLORS.border,
+    backgroundColor: COLORS.surface,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginTop: 2,
+  },
+  checkboxBoxOn: { backgroundColor: COLORS.primary, borderColor: COLORS.primary },
+  checkboxLabel: { flex: 1, fontFamily: FONTS.medium, fontSize: 13, color: COLORS.text, lineHeight: 20 },
   resultCard: { backgroundColor: COLORS.surfaceAlt, borderRadius: RADIUS.md, padding: SPACING.lg, gap: 10, marginTop: 8 },
   resultTitle: { fontFamily: FONTS.bold, fontSize: 15, color: COLORS.text, marginBottom: 4 },
   resultRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },

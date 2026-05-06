@@ -14,4 +14,6 @@ module.exports = {
   frontendOrigin: process.env.FRONTEND_ORIGIN || '*',
   scoringMaxDebtRatio: Number(process.env.SCORING_MAX_DEBT_RATIO || 0.35),
   autoSeedOnStart: (process.env.AUTO_SEED_ON_START || 'true').toLowerCase() === 'true',
+  /** Mettre à true une fois pour ajouter les nouvelles colonnes (ALTER TABLE). */
+  sequelizeAlter: (process.env.SEQUELIZE_ALTER || '').toLowerCase() === 'true',
 };
