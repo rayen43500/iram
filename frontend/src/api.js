@@ -92,7 +92,7 @@ async function apiRequest(path, options = {}, token) {
         `Connexion impossible au serveur (${API_BASE_URL}). ` +
           'Sur un vrai téléphone : le PC et le téléphone doivent être sur le même Wi‑Fi. ' +
           'Lancez le backend sur le port 4000. ' +
-          'Si besoin, créez frontend/.env avec EXPO_PUBLIC_API_BASE_URL=http://VOTRE_IP_LAN:4000/api puis redémarrez Expo (npx expo start -c).`
+          "Si besoin, créez frontend/.env avec EXPO_PUBLIC_API_BASE_URL=http://VOTRE_IP_LAN:4000/api puis redémarrez Expo (npx expo start -c)."
       );
     }
 
