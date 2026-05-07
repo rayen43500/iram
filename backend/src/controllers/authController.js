@@ -47,7 +47,10 @@ async function register(req, res) {
   });
 
   const token = signToken(String(user.id));
-  return res.status(201).json({ token, user: { id: user.id, fullName: user.fullName, email: user.email, role: user.role } });
+  return res.status(201).json({
+    token,
+    user: { id: user.id, fullName: user.fullName, email: user.email, role: user.role, avatarUrl: user.avatarUrl },
+  });
 }
 
 async function login(req, res) {
@@ -70,7 +73,10 @@ async function login(req, res) {
   }
 
   const token = signToken(String(user.id));
-  return res.json({ token, user: { id: user.id, fullName: user.fullName, email: user.email, role: user.role } });
+  return res.json({
+    token,
+    user: { id: user.id, fullName: user.fullName, email: user.email, role: user.role, avatarUrl: user.avatarUrl },
+  });
 }
 
 async function me(req, res) {
@@ -86,7 +92,58 @@ async function me(req, res) {
     role: user.role,
     salary: user.salary,
     balance: user.balance,
+    avatarUrl: user.avatarUrl || null,
     createdAt: user.createdAt,
+    updatedAt: user.updatedAt,
+  });
+}
+
+async function updateProfile(req, res) {
+  const { fullName, avatarUrl } = req.body;
+  const user = await User.findByPk(req.user.id);
+  if (!user) {
+    return res.status(404).json({ message: 'Utilisateur introuvable' });
+  }
+
+  const patches = {};
+
+  if (fullName !== undefined) {
+    const n = typeof fullName === 'string' ? fullName.trim() : '';
+    if (!n || n.length < 2) {
+      return res.status(400).json({ message: 'Nom complet invalide.' });
+    }
+    patches.fullName = n;
+  }
+
+  if (avatarUrl !== undefined) {
+    if (avatarUrl === null || avatarUrl === '') {
+      patches.avatarUrl = null;
+    } else if (typeof avatarUrl !== 'string') {
+      return res.status(400).json({ message: 'Format avatar invalide.' });
+    } else {
+      const a = avatarUrl.trim();
+      if (a.length > 550000 || (!a.startsWith('http') && !a.startsWith('data:image/'))) {
+        return res.status(400).json({ message: 'Image ou URL de photo invalide.' });
+      }
+      patches.avatarUrl = a;
+    }
+  }
+
+  if (Object.keys(patches).length === 0) {
+    return res.status(400).json({ message: 'Aucune modification envoyee.' });
+  }
+
+  await user.update(patches);
+  await user.reload();
+
+  return res.json({
+    id: user.id,
+    fullName: user.fullName,
+    email: user.email,
+    role: user.role,
+    salary: user.salary,
+    balance: user.balance,
+    avatarUrl: user.avatarUrl || null,
     updatedAt: user.updatedAt,
   });
 }
@@ -95,4 +152,5 @@ module.exports = {
   register,
   login,
   me,
+  updateProfile,
 };

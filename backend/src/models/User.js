@@ -11,6 +11,8 @@ const User = sequelize.define(
     role: { type: DataTypes.ENUM('client', 'admin'), allowNull: false, defaultValue: 'client' },
     salary: { type: DataTypes.FLOAT, allowNull: false, defaultValue: 0 },
     balance: { type: DataTypes.FLOAT, allowNull: false, defaultValue: 0 },
+    /** URL distante ou image en data URL (JPEG/PNG) */
+    avatarUrl: { type: DataTypes.TEXT, allowNull: true, defaultValue: null },
   },
   {
     tableName: 'users',

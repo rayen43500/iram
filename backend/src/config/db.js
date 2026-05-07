@@ -70,6 +70,27 @@ async function ensureCreditRequestApplicationFormColumn() {
   console.log('Schema: colonne credit_requests.applicationForm ajoutee automatiquement.');
 }
 
+async function ensureUserAvatarUrlColumn() {
+  const dialect = sequelize.getDialect();
+  if (!['mysql', 'mariadb'].includes(dialect)) {
+    return;
+  }
+  const [rows] = await sequelize.query(
+    `SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS 
+     WHERE TABLE_SCHEMA = DATABASE()
+     AND TABLE_NAME = 'users'
+     AND COLUMN_NAME = 'avatarUrl'
+     LIMIT 1`
+  );
+  if (rows && rows.length > 0) {
+    return;
+  }
+  await sequelize.query(
+    'ALTER TABLE `users` ADD COLUMN `avatarUrl` TEXT NULL'
+  );
+  console.log('Schema: colonne users.avatarUrl ajoutee automatiquement.');
+}
+
 async function connectDb({ forceSync = false } = {}) {
   initAssociations();
   await ensureDatabaseExists();
@@ -79,6 +100,7 @@ async function connectDb({ forceSync = false } = {}) {
     alter: Boolean(env.sequelizeAlter) && !forceSync,
   });
   await ensureCreditRequestApplicationFormColumn();
+  await ensureUserAvatarUrlColumn();
   console.log('MySQL connecte');
 }
 

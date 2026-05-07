@@ -6,7 +6,8 @@ import {
 } from 'react-native';
 import { Inter_400Regular, Inter_500Medium, Inter_600SemiBold, Inter_700Bold, Inter_800ExtraBold, useFonts } from '@expo-google-fonts/inter';
 import { LinearGradient } from 'expo-linear-gradient';
-import { Home, CreditCard, Calculator, MessageCircle, ShieldCheck, Wallet, Banknote, LogOut, RefreshCw, User, Send, ChevronRight, TrendingUp, Clock, CheckCircle2, XCircle, BarChart3, Users, FileText, Search, Filter, Eye, EyeOff } from 'lucide-react-native';
+import * as ImagePicker from 'expo-image-picker';
+import { Home, CreditCard, Calculator, MessageCircle, ShieldCheck, Wallet, Banknote, LogOut, RefreshCw, User, Send, ChevronRight, TrendingUp, Clock, CheckCircle2, XCircle, BarChart3, Users, FileText, Search, Filter, Eye, EyeOff, Menu, LayoutDashboard, ClipboardList, CircleUser, X as XIcon } from 'lucide-react-native';
 import { PieChart, BarChart } from 'react-native-chart-kit';
 import { apiRequest } from './src/api';
 import { COLORS, FONTS, RADIUS, SHADOW, SPACING } from './src/theme';
@@ -16,6 +17,14 @@ const ATB_LOGO = require('./assets/image.png');
 
 function formatMoney(v) { return `${Number(v || 0).toLocaleString('fr-FR', { maximumFractionDigits: 2 })} TND`; }
 function formatPercent(v) { const n = Number(v || 0) * (v <= 1 ? 100 : 1); return `${n.toFixed(1)}%`; }
+
+const ADMIN_NAV_BREAKPOINT = 768;
+const ADMIN_NAV = [
+  { key: 'overview', label: 'Synthèse', icon: LayoutDashboard },
+  { key: 'requests', label: 'Demandes', icon: ClipboardList },
+  { key: 'products', label: 'Offres crédit', icon: CreditCard },
+  { key: 'profile', label: 'Profil', icon: CircleUser },
+];
 
 const PRO_CREDIT_CATALOG = [
   { name: 'Crédit Sayara', target: 'Financement véhicule neuf ou d’occasion', speed: '24h' },
@@ -71,6 +80,10 @@ export default function App() {
   const [reqOtherIncome, setReqOtherIncome] = useState('');
   const [reqNotes, setReqNotes] = useState('');
   const [reqDeclareAccurate, setReqDeclareAccurate] = useState(false);
+  const [adminPage, setAdminPage] = useState('overview');
+  const [adminSidebarOpen, setAdminSidebarOpen] = useState(false);
+  const [profileEditName, setProfileEditName] = useState('');
+  const [profileAvatarDraft, setProfileAvatarDraft] = useState(null);
 
   const isAuthenticated = Boolean(token && user);
   const isAdmin = user?.role === 'admin';
@@ -88,6 +101,10 @@ export default function App() {
     .slice(0, 3), [creditTypes]);
 
   useEffect(() => { if (isAuthenticated) loadInitialData(); }, [isAuthenticated]);
+
+  useEffect(() => {
+    if (user?.fullName != null) setProfileEditName(String(user.fullName));
+  }, [user?.fullName, user?.id]);
 
   async function loadInitialData() {
     try {
@@ -130,6 +147,43 @@ export default function App() {
     setSelectedCreditTypeId(''); setEstimationResult(null); setChatMessages([]); setAdminSummary(null); setAdminRequests([]); setNotice(''); setError('');
     setReqPhone(''); setReqCity(''); setReqProfession(''); setReqProjectPurpose('');
     setReqOtherIncome(''); setReqNotes(''); setReqDeclareAccurate(false);
+    setAdminPage('overview'); setAdminSidebarOpen(false); setProfileAvatarDraft(null);
+  }
+
+  async function onSaveProfile() {
+    const name = profileEditName.trim();
+    if (name.length < 2) { setError('Nom invalide.'); return; }
+    try {
+      setError(''); setNotice(''); setIsActionBusy(true);
+      const body = { fullName: name };
+      if (profileAvatarDraft) body.avatarUrl = profileAvatarDraft;
+      const updated = await apiRequest('/auth/profile', { method: 'PATCH', body: JSON.stringify(body) }, token);
+      setUser((prev) => ({ ...prev, ...updated }));
+      setProfileAvatarDraft(null);
+      setNotice('Profil mis à jour.');
+    } catch (e) {
+      setError(e.message || 'Mise à jour impossible.');
+    } finally {
+      setIsActionBusy(false);
+    }
+  }
+
+  async function pickProfileAvatar() {
+    try {
+      const perm = await ImagePicker.requestMediaLibraryPermissionsAsync();
+      if (!perm.granted) { setError('Accès aux photos refusé.'); return; }
+      const picked = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: ['images'],
+        allowsEditing: true,
+        aspect: [1, 1],
+        quality: 0.45,
+        base64: true,
+      });
+      if (picked.canceled || !picked.assets?.[0]?.base64) return;
+      setProfileAvatarDraft(`data:image/jpeg;base64,${picked.assets[0].base64}`);
+    } catch {
+      setError('Impossible de charger l’image.');
+    }
   }
 
   function validateCreditApplicationForm() {
@@ -228,8 +282,9 @@ export default function App() {
     { key: 'dashboard', label: 'Accueil', icon: Home },
     { key: 'credits', label: 'Crédits', icon: CreditCard },
     { key: 'pro', label: 'Pro', icon: Banknote },
-    { key: 'simulation', label: 'Simulation', icon: Calculator },
+    { key: 'simulation', label: 'Simul.', icon: Calculator },
     { key: 'chatbot', label: 'Assistant', icon: MessageCircle },
+    { key: 'profile', label: 'Profil', icon: CircleUser },
   ];
   const tabsAdmin = [
     { key: 'admin', label: 'Dashboard', icon: ShieldCheck },
@@ -336,13 +391,39 @@ export default function App() {
     return searchMatch && statusMatch;
   });
 
+  const adminNavRail = ADMIN_NAV.map((nav) => {
+    const Ico = nav.icon;
+    const active = adminPage === nav.key;
+    return (
+      <TouchableOpacity key={nav.key} style={[s.adminNavBtn, active && s.adminNavBtnActive]} onPress={() => { setAdminPage(nav.key); setAdminSidebarOpen(false); }}>
+        <Ico size={18} color={active ? COLORS.white : COLORS.primary} />
+        <Text style={[s.adminNavBtnText, active && s.adminNavBtnTextActive]}>{nav.label}</Text>
+      </TouchableOpacity>
+    );
+  });
+
+  const adminRailReserve = isAdmin && view === 'admin' && width >= ADMIN_NAV_BREAKPOINT ? 224 : 0;
+  const chartEdgePad = isCompact ? 40 : 56;
+  const adminChartWidth = width < 600 ? Math.max(210, width - adminRailReserve - chartEdgePad) : 300;
+
+  const profileAvatarSrc = profileAvatarDraft || user?.avatarUrl || null;
+  const showProfileScreen = (!isAdmin && view === 'profile') || (isAdmin && view === 'admin' && adminPage === 'profile');
+
   return (
     <SafeAreaView style={s.safe}>
       {/* Header */}
       <View style={[s.header, isCompact && s.headerCompact]}>
         <View style={s.headerLeft}>
+          {isAdmin && view === 'admin' && width < ADMIN_NAV_BREAKPOINT ? (
+            <TouchableOpacity style={s.headerIconBtn} onPress={() => setAdminSidebarOpen(true)}>
+              <Menu size={20} color={COLORS.primary} />
+            </TouchableOpacity>
+          ) : null}
           <Image source={ATB_LOGO} style={s.headerLogo} resizeMode="contain" />
-          <View>
+          {user?.avatarUrl ? (
+            <Image source={{ uri: user.avatarUrl }} style={s.headerUserAvatar} />
+          ) : null}
+          <View style={{ flexShrink: 1 }}>
             <Text style={s.headerGreet}>Bonjour 👋</Text>
             <Text style={[s.headerName, isTiny && { fontSize: 14 }]} numberOfLines={1}>{user?.fullName}</Text>
           </View>
@@ -357,7 +438,14 @@ export default function App() {
         </View>
       </View>
 
-      <ScrollView style={s.body} contentContainerStyle={[s.bodyContent, isCompact && { padding: SPACING.md }]} refreshControl={<RefreshControl refreshing={isLoadingData} onRefresh={loadInitialData} tintColor={COLORS.primary} />}>
+      <View style={s.adminLayout}>
+        {isAdmin && view === 'admin' && width >= ADMIN_NAV_BREAKPOINT ? (
+          <View style={s.adminSidebarRail}>
+            <Text style={s.adminSidebarTitle}>Administration</Text>
+            {adminNavRail}
+          </View>
+        ) : null}
+        <ScrollView style={s.body} contentContainerStyle={[s.bodyContent, isCompact && { padding: SPACING.md }]} refreshControl={<RefreshControl refreshing={isLoadingData} onRefresh={loadInitialData} tintColor={COLORS.primary} />}>
         {notice ? <View style={s.noticeBanner}><CheckCircle2 size={16} color={COLORS.success} /><Text style={s.noticeText}>{notice}</Text></View> : null}
         {error ? <View style={s.errorBanner}><XCircle size={16} color={COLORS.error} /><Text style={s.errorText}>{error}</Text></View> : null}
 
@@ -645,12 +733,11 @@ export default function App() {
           </SectionCard>
         )}
 
-        {/* ── ADMIN ── */}
-        {isAdmin && view === 'admin' && (
-          <>
-            <SectionCard>
-              <SectionTitle>Vue analytique</SectionTitle>
-              {adminSummary ? (
+        {/* ── ADMIN (pages) ── */}
+        {isAdmin && view === 'admin' && adminPage === 'overview' && (
+          <SectionCard>
+            <SectionTitle>Vue analytique</SectionTitle>
+            {adminSummary ? (
                 <>
                   <View style={s.adminGrid}>
                     <KpiCard icon={FileText} label="Total demandes" value={adminSummary.totalRequests} color={COLORS.primary} />
@@ -669,7 +756,7 @@ export default function App() {
                           { name: 'Acceptées', count: adminSummary.acceptedRequests, color: COLORS.success, legendFontColor: '#7A7A7A', legendFontSize: 12 },
                           { name: 'Refusées', count: adminSummary.rejectedRequests, color: COLORS.error, legendFontColor: '#7A7A7A', legendFontSize: 12 },
                         ]}
-                        width={width < 600 ? width - (isCompact ? 44 : 64) : 300}
+                        width={width < 600 ? adminChartWidth : 300}
                         height={180}
                         chartConfig={{ color: () => COLORS.primary }}
                         accessor="count"
@@ -680,50 +767,51 @@ export default function App() {
                     </View>
                   </View>
                 </>
-              ) : <EmptyState icon="📊" title="Pas de stats" description="Ajoutez des demandes." />}
-            </SectionCard>
-
-            <SectionCard>
-              <SectionTitle>Gestion des demandes</SectionTitle>
-
-              <View style={{ marginBottom: 16 }}>
-                <View style={[s.input, { flexDirection: 'row', alignItems: 'center', marginBottom: 12 }]}>
-                  <Search size={20} color={COLORS.textLight} />
-                  <TextInput
-                    style={{ flex: 1, marginLeft: 8 }}
-                    placeholder="Rechercher par nom..."
-                    value={adminSearchQuery}
-                    onChangeText={setAdminSearchQuery}
-                  />
-                </View>
-
-                <View style={{ flexDirection: 'row', gap: 8, flexWrap: 'wrap' }}>
-                  {['all', 'pending', 'accepted', 'rejected'].map(status => (
-                    <TouchableOpacity
-                      key={status}
-                      style={[s.filterChip, adminStatusFilter === status && s.filterChipActive]}
-                      onPress={() => setAdminStatusFilter(status)}
-                    >
-                      <Text style={[s.filterChipText, adminStatusFilter === status && s.filterChipTextActive]}>
-                        {status === 'all' ? 'Toutes' : status === 'pending' ? 'En attente' : status === 'accepted' ? 'Acceptées' : 'Refusées'}
-                      </Text>
-                    </TouchableOpacity>
-                  ))}
-                </View>
-              </View>
-
-              {filteredAdminRequests.length === 0 ? <EmptyState icon="📋" title="Aucune demande" description="Aucune demande ne correspond aux critères." /> : filteredAdminRequests.map((r) => (
-                <TouchableOpacity style={s.listItem} key={r.id} onPress={() => setAdminSelectedRequest(r)}>
-                  <View style={s.listItemHead}><Text style={s.listItemTitle}>{r.User?.fullName || 'Client'}</Text><StatusBadge status={r.status} /></View>
-                  <Text style={s.listItemSub}>{r.CreditType?.name || 'Type'} – {formatMoney(r.requestedAmount)} • {r.requestedDurationMonths} mois</Text>
-                  <Text style={[s.listItemSub, { marginTop: 4, color: COLORS.primary }]}>Voir les détails {'>'}</Text>
-                </TouchableOpacity>
-              ))}
-            </SectionCard>
-          </>
+            ) : <EmptyState icon="📊" title="Pas de stats" description="Ajoutez des demandes." />}
+          </SectionCard>
         )}
 
-        {isAdmin && view === 'admin' && (
+        {isAdmin && view === 'admin' && adminPage === 'requests' && (
+          <SectionCard>
+            <SectionTitle>Gestion des demandes</SectionTitle>
+
+            <View style={{ marginBottom: 16 }}>
+              <View style={[s.input, { flexDirection: 'row', alignItems: 'center', marginBottom: 12 }]}>
+                <Search size={20} color={COLORS.textLight} />
+                <TextInput
+                  style={{ flex: 1, marginLeft: 8 }}
+                  placeholder="Rechercher par nom..."
+                  value={adminSearchQuery}
+                  onChangeText={setAdminSearchQuery}
+                />
+              </View>
+
+              <View style={{ flexDirection: 'row', gap: 8, flexWrap: 'wrap' }}>
+                {['all', 'pending', 'accepted', 'rejected'].map((status) => (
+                  <TouchableOpacity
+                    key={status}
+                    style={[s.filterChip, adminStatusFilter === status && s.filterChipActive]}
+                    onPress={() => setAdminStatusFilter(status)}
+                  >
+                    <Text style={[s.filterChipText, adminStatusFilter === status && s.filterChipTextActive]}>
+                      {status === 'all' ? 'Toutes' : status === 'pending' ? 'En attente' : status === 'accepted' ? 'Acceptées' : 'Refusées'}
+                    </Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
+            </View>
+
+            {filteredAdminRequests.length === 0 ? <EmptyState icon="📋" title="Aucune demande" description="Aucune demande ne correspond aux critères." /> : filteredAdminRequests.map((r) => (
+              <TouchableOpacity style={s.listItem} key={r.id} onPress={() => setAdminSelectedRequest(r)}>
+                <View style={s.listItemHead}><Text style={s.listItemTitle}>{r.User?.fullName || 'Client'}</Text><StatusBadge status={r.status} /></View>
+                <Text style={s.listItemSub}>{r.CreditType?.name || 'Type'} – {formatMoney(r.requestedAmount)} • {r.requestedDurationMonths} mois</Text>
+                <Text style={[s.listItemSub, { marginTop: 4, color: COLORS.primary }]}>Voir les détails {'>'}</Text>
+              </TouchableOpacity>
+            ))}
+          </SectionCard>
+        )}
+
+        {isAdmin && view === 'admin' && adminPage === 'products' && (
           <SectionCard>
             <SectionTitle>Offres de crédit</SectionTitle>
             {creditTypes.map((ct) => (
@@ -765,7 +853,58 @@ export default function App() {
             ))}
           </SectionCard>
         )}
+
+        {showProfileScreen && (
+          <SectionCard>
+            <SectionTitle>{isAdmin ? 'Profil administrateur' : 'Mon profil'}</SectionTitle>
+            <Text style={s.formHint}>
+              {isAdmin
+                ? 'Nom affiché dans l’application et photo de profil (optionnel).'
+                : 'Modifiez votre nom et votre photo ; votre email est lié au compte.'}
+            </Text>
+
+            <InputLabel>Email</InputLabel>
+            <Text style={s.profileEmail}>{user?.email || '—'}</Text>
+
+            <View style={s.profileAvatarRow}>
+              <Pressable style={({ pressed }) => [s.profileAvatarTouch, pressed && { opacity: 0.92 }]} onPress={pickProfileAvatar}>
+                {profileAvatarSrc ? (
+                  <Image source={{ uri: profileAvatarSrc }} style={s.profileAvatarImg} />
+                ) : (
+                  <View style={[s.profileAvatarImg, s.profileAvatarPlaceholder]}>
+                    <CircleUser size={40} color={COLORS.textLight} />
+                  </View>
+                )}
+              </Pressable>
+              <View style={{ flex: 1, gap: 6 }}>
+                <Text style={[s.formHint, { marginTop: 0 }]}>Appuyez sur la vignette pour choisir une image.</Text>
+                <SecondaryButton label="Choisir une photo" onPress={pickProfileAvatar} />
+              </View>
+            </View>
+
+            <InputLabel>Nom affiché</InputLabel>
+            <TextInput style={s.input} value={profileEditName} onChangeText={setProfileEditName} placeholder="Nom et prénom" autoCapitalize="words" />
+
+            <PrimaryButton label="Enregistrer les modifications" onPress={onSaveProfile} disabled={isActionBusy} loading={isActionBusy} />
+          </SectionCard>
+        )}
       </ScrollView>
+      </View>
+
+      <Modal transparent animationType="fade" visible={isAdmin && view === 'admin' && adminSidebarOpen && width < ADMIN_NAV_BREAKPOINT} onRequestClose={() => setAdminSidebarOpen(false)}>
+        <View style={s.adminDrawerRoot}>
+          <Pressable style={s.adminDrawerScrim} onPress={() => setAdminSidebarOpen(false)} />
+          <View style={[s.adminSidebarRail, s.adminSidebarDrawer]}>
+            <View style={s.adminDrawerHeader}>
+              <Text style={s.adminSidebarTitle}>Administration</Text>
+              <TouchableOpacity hitSlop={12} onPress={() => setAdminSidebarOpen(false)} style={s.headerIconBtn}>
+                <XIcon size={20} color={COLORS.textSecondary} />
+              </TouchableOpacity>
+            </View>
+            {adminNavRail}
+          </View>
+        </View>
+      </Modal>
 
       {/* ── MODAL DETAIL DOSSIER ── */}
       {adminSelectedRequest && (
@@ -870,6 +1009,7 @@ const s = StyleSheet.create({
   headerCompact: { paddingHorizontal: SPACING.md },
   headerLeft: { flexDirection: 'row', alignItems: 'center', gap: 10, flexShrink: 1 },
   headerLogo: { width: 34, height: 34, borderRadius: 10 },
+  headerUserAvatar: { width: 36, height: 36, borderRadius: 18, borderWidth: 1, borderColor: COLORS.borderLight, backgroundColor: COLORS.surfaceAlt },
   headerGreet: { fontFamily: FONTS.medium, fontSize: 12, color: COLORS.textSecondary },
   headerName: { fontFamily: FONTS.bold, fontSize: 16, color: COLORS.text },
   headerRight: { flexDirection: 'row', gap: 6 },
@@ -960,7 +1100,48 @@ const s = StyleSheet.create({
   stepItem: { flexDirection: 'row', alignItems: 'center', gap: 10, paddingVertical: 4 },
   stepDot: { width: 10, height: 10, borderRadius: RADIUS.full },
   stepText: { fontFamily: FONTS.medium, fontSize: 13, color: COLORS.textSecondary },
-  // Admin
+  // Admin layout + sidebar
+  adminLayout: { flex: 1, flexDirection: 'row' },
+  adminSidebarRail: {
+    width: 224,
+    paddingTop: SPACING.md,
+    paddingHorizontal: SPACING.sm,
+    paddingBottom: SPACING.lg,
+    backgroundColor: COLORS.white,
+    borderRightWidth: 1,
+    borderRightColor: COLORS.borderLight,
+    gap: 6,
+  },
+  adminSidebarDrawer: {
+    flex: undefined,
+    width: '82%',
+    maxWidth: 300,
+    borderRightWidth: 0,
+    ...SHADOW.card,
+    borderBottomLeftRadius: 0,
+    borderTopLeftRadius: 0,
+  },
+  adminSidebarTitle: { fontFamily: FONTS.extraBold, fontSize: 15, color: COLORS.primaryDark, marginBottom: SPACING.sm, paddingHorizontal: SPACING.sm },
+  adminNavBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    paddingVertical: 12,
+    paddingHorizontal: SPACING.sm,
+    borderRadius: RADIUS.md,
+    backgroundColor: COLORS.surfaceAlt,
+  },
+  adminNavBtnActive: { backgroundColor: COLORS.primary },
+  adminNavBtnText: { fontFamily: FONTS.semiBold, fontSize: 14, color: COLORS.text },
+  adminNavBtnTextActive: { color: COLORS.white },
+  adminDrawerRoot: { flex: 1, flexDirection: 'row' },
+  adminDrawerScrim: { flex: 1, backgroundColor: 'rgba(0,0,0,0.45)' },
+  adminDrawerHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: SPACING.sm, paddingHorizontal: SPACING.sm },
+  profileAvatarRow: { flexDirection: 'row', alignItems: 'center', gap: SPACING.md, marginVertical: SPACING.md },
+  profileAvatarTouch: { borderRadius: RADIUS.full, overflow: 'hidden' },
+  profileAvatarImg: { width: 88, height: 88, borderRadius: RADIUS.full, backgroundColor: COLORS.surfaceAlt },
+  profileAvatarPlaceholder: { alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: COLORS.border },
+  profileEmail: { fontFamily: FONTS.medium, fontSize: 14, color: COLORS.textSecondary, marginBottom: SPACING.sm },
   adminGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: SPACING.md },
   adminActions: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 8 },
   adminBtn: { borderRadius: RADIUS.sm, paddingVertical: 8, paddingHorizontal: 12 },
