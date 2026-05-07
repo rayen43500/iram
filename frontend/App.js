@@ -1,12 +1,11 @@
 import { StatusBar } from 'expo-status-bar';
 import { useEffect, useMemo, useState } from 'react';
 import {
-  ActivityIndicator, Image, Pressable, RefreshControl, SafeAreaView, ScrollView,
+  ActivityIndicator, Image, Platform, Pressable, RefreshControl, SafeAreaView, ScrollView,
   StyleSheet, Text, TextInput, TouchableOpacity, View, Dimensions, Modal, useWindowDimensions
 } from 'react-native';
 import { Inter_400Regular, Inter_500Medium, Inter_600SemiBold, Inter_700Bold, Inter_800ExtraBold, useFonts } from '@expo-google-fonts/inter';
 import { LinearGradient } from 'expo-linear-gradient';
-import * as ImagePicker from 'expo-image-picker';
 import { Home, CreditCard, Calculator, MessageCircle, ShieldCheck, Wallet, Banknote, LogOut, RefreshCw, User, Send, ChevronRight, TrendingUp, Clock, CheckCircle2, XCircle, BarChart3, Users, FileText, Search, Filter, Eye, EyeOff, Menu, LayoutDashboard, ClipboardList, CircleUser, X as XIcon } from 'lucide-react-native';
 import { PieChart, BarChart } from 'react-native-chart-kit';
 import { apiRequest } from './src/api';
@@ -84,6 +83,7 @@ export default function App() {
   const [adminSidebarOpen, setAdminSidebarOpen] = useState(false);
   const [profileEditName, setProfileEditName] = useState('');
   const [profileAvatarDraft, setProfileAvatarDraft] = useState(null);
+  const [profileAvatarUrlInput, setProfileAvatarUrlInput] = useState('');
 
   const isAuthenticated = Boolean(token && user);
   const isAdmin = user?.role === 'admin';
@@ -105,6 +105,10 @@ export default function App() {
   useEffect(() => {
     if (user?.fullName != null) setProfileEditName(String(user.fullName));
   }, [user?.fullName, user?.id]);
+
+  useEffect(() => {
+    setProfileAvatarUrlInput(typeof user?.avatarUrl === 'string' ? user.avatarUrl : '');
+  }, [user?.id, user?.avatarUrl]);
 
   async function loadInitialData() {
     try {
@@ -147,42 +151,55 @@ export default function App() {
     setSelectedCreditTypeId(''); setEstimationResult(null); setChatMessages([]); setAdminSummary(null); setAdminRequests([]); setNotice(''); setError('');
     setReqPhone(''); setReqCity(''); setReqProfession(''); setReqProjectPurpose('');
     setReqOtherIncome(''); setReqNotes(''); setReqDeclareAccurate(false);
-    setAdminPage('overview'); setAdminSidebarOpen(false); setProfileAvatarDraft(null);
+    setAdminPage('overview'); setAdminSidebarOpen(false); setProfileAvatarDraft(null); setProfileAvatarUrlInput('');
+  }
+
+  function pickProfileAvatarFromWebFile() {
+    if (Platform.OS !== 'web' || typeof document === 'undefined') return;
+    const input = document.createElement('input');
+    input.type = 'file';
+    input.accept = 'image/*';
+    input.onchange = (e) => {
+      const file = e.target.files?.[0];
+      if (!file) return;
+      if (file.size > 450000) {
+        setError('Image trop volumineuse pour l’API (réduisez la taille ou utilisez une URL https).');
+        return;
+      }
+      const reader = new FileReader();
+      reader.onload = () => {
+        const r = reader.result;
+        if (typeof r === 'string') setProfileAvatarDraft(r);
+      };
+      reader.onerror = () => setError('Lecture du fichier impossible.');
+      reader.readAsDataURL(file);
+    };
+    input.click();
   }
 
   async function onSaveProfile() {
     const name = profileEditName.trim();
     if (name.length < 2) { setError('Nom invalide.'); return; }
+    const url = profileAvatarUrlInput.trim();
+    const urlOk = url && (url.startsWith('http://') || url.startsWith('https://') || url.startsWith('data:image/'));
+    if (url && !urlOk) {
+      setError('URL de photo invalide (utilisez https://… ou une image en data:image/…).');
+      return;
+    }
     try {
       setError(''); setNotice(''); setIsActionBusy(true);
       const body = { fullName: name };
       if (profileAvatarDraft) body.avatarUrl = profileAvatarDraft;
+      else if (urlOk) body.avatarUrl = url;
       const updated = await apiRequest('/auth/profile', { method: 'PATCH', body: JSON.stringify(body) }, token);
       setUser((prev) => ({ ...prev, ...updated }));
       setProfileAvatarDraft(null);
+      setProfileAvatarUrlInput(typeof updated.avatarUrl === 'string' ? updated.avatarUrl : '');
       setNotice('Profil mis à jour.');
     } catch (e) {
       setError(e.message || 'Mise à jour impossible.');
     } finally {
       setIsActionBusy(false);
-    }
-  }
-
-  async function pickProfileAvatar() {
-    try {
-      const perm = await ImagePicker.requestMediaLibraryPermissionsAsync();
-      if (!perm.granted) { setError('Accès aux photos refusé.'); return; }
-      const picked = await ImagePicker.launchImageLibraryAsync({
-        mediaTypes: ['images'],
-        allowsEditing: true,
-        aspect: [1, 1],
-        quality: 0.45,
-        base64: true,
-      });
-      if (picked.canceled || !picked.assets?.[0]?.base64) return;
-      setProfileAvatarDraft(`data:image/jpeg;base64,${picked.assets[0].base64}`);
-    } catch {
-      setError('Impossible de charger l’image.');
     }
   }
 
@@ -406,7 +423,9 @@ export default function App() {
   const chartEdgePad = isCompact ? 40 : 56;
   const adminChartWidth = width < 600 ? Math.max(210, width - adminRailReserve - chartEdgePad) : 300;
 
-  const profileAvatarSrc = profileAvatarDraft || user?.avatarUrl || null;
+  const trimmedAvatarUrl = profileAvatarUrlInput.trim();
+  const avatarUrlPreviewOk = trimmedAvatarUrl && (trimmedAvatarUrl.startsWith('http://') || trimmedAvatarUrl.startsWith('https://') || trimmedAvatarUrl.startsWith('data:image/'));
+  const profileAvatarSrc = profileAvatarDraft || (avatarUrlPreviewOk ? trimmedAvatarUrl : null) || user?.avatarUrl || null;
   const showProfileScreen = (!isAdmin && view === 'profile') || (isAdmin && view === 'admin' && adminPage === 'profile');
 
   return (
@@ -867,7 +886,7 @@ export default function App() {
             <Text style={s.profileEmail}>{user?.email || '—'}</Text>
 
             <View style={s.profileAvatarRow}>
-              <Pressable style={({ pressed }) => [s.profileAvatarTouch, pressed && { opacity: 0.92 }]} onPress={pickProfileAvatar}>
+              <View style={s.profileAvatarTouch}>
                 {profileAvatarSrc ? (
                   <Image source={{ uri: profileAvatarSrc }} style={s.profileAvatarImg} />
                 ) : (
@@ -875,12 +894,29 @@ export default function App() {
                     <CircleUser size={40} color={COLORS.textLight} />
                   </View>
                 )}
-              </Pressable>
-              <View style={{ flex: 1, gap: 6 }}>
-                <Text style={[s.formHint, { marginTop: 0 }]}>Appuyez sur la vignette pour choisir une image.</Text>
-                <SecondaryButton label="Choisir une photo" onPress={pickProfileAvatar} />
+              </View>
+              <View style={{ flex: 1, gap: 8 }}>
+                <Text style={[s.formHint, { marginTop: 0 }]}>
+                  {Platform.OS === 'web'
+                    ? 'Collez une adresse https vers une image, ou importez un fichier (aperçu puis enregistrez).'
+                    : 'Collez une URL https vers votre photo, ou une image en data:image/… (aperçu puis enregistrez).'}
+                </Text>
+                {Platform.OS === 'web' ? (
+                  <SecondaryButton label="Importer une image (navigateur)" onPress={pickProfileAvatarFromWebFile} />
+                ) : null}
               </View>
             </View>
+
+            <InputLabel>URL de la photo</InputLabel>
+            <TextInput
+              style={s.input}
+              value={profileAvatarUrlInput}
+              onChangeText={setProfileAvatarUrlInput}
+              placeholder="https://…"
+              placeholderTextColor={COLORS.textLight}
+              autoCapitalize="none"
+              autoCorrect={false}
+            />
 
             <InputLabel>Nom affiché</InputLabel>
             <TextInput style={s.input} value={profileEditName} onChangeText={setProfileEditName} placeholder="Nom et prénom" autoCapitalize="words" />
