@@ -1,5 +1,5 @@
 // Design System — ATB Red Visual Identity
-export const COLORS = {
+export const LIGHT_COLORS = {
   primary: '#A6192E',
   primaryDark: '#7A1021',
   secondary: '#C73A4A',
@@ -28,6 +28,38 @@ export const COLORS = {
   chatBotBubble: '#F0F0F0',
   chatUserBubble: '#A6192E',
 };
+
+export const DARK_COLORS = {
+  primary: '#E65064',
+  primaryDark: '#B93B4C',
+  secondary: '#FF7A8B',
+  secondaryLight: '#FF9EAB',
+  background: '#0F1115',
+  surface: '#151922',
+  surfaceAlt: '#1E2330',
+  text: '#F5F5F5',
+  textSecondary: '#B7BDC8',
+  textLight: '#8C93A0',
+  border: '#2A3140',
+  borderLight: '#222835',
+  silver: '#9AA3AF',
+  metalDark: '#6B7280',
+  success: '#2ECC71',
+  successBg: '#123523',
+  error: '#FF6B6B',
+  errorBg: '#3A1E1E',
+  warning: '#F6B93B',
+  warningBg: '#3A2E14',
+  white: '#FFFFFF',
+  gradientStart: '#1A2030',
+  gradientEnd: '#0F1115',
+  cardShadow: 'rgba(0,0,0,0.35)',
+  overlay: 'rgba(0,0,0,0.6)',
+  chatBotBubble: '#1E2330',
+  chatUserBubble: '#E65064',
+};
+
+export const COLORS = LIGHT_COLORS;
 
 export const SPACING = {
   xs: 4,

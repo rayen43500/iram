@@ -16,4 +16,11 @@ module.exports = {
   autoSeedOnStart: (process.env.AUTO_SEED_ON_START || 'true').toLowerCase() === 'true',
   /** Mettre à true une fois pour ajouter les nouvelles colonnes (ALTER TABLE). */
   sequelizeAlter: (process.env.SEQUELIZE_ALTER || '').toLowerCase() === 'true',
+  smtpHost: process.env.SMTP_HOST || '',
+  smtpPort: Number(process.env.SMTP_PORT || 587),
+  smtpUser: process.env.SMTP_USER || '',
+  smtpPass: process.env.SMTP_PASS || '',
+  smtpFrom: process.env.SMTP_FROM || 'no-reply@bank.local',
+  otpExpiresMinutes: Number(process.env.OTP_EXPIRES_MINUTES || 10),
+  expoPushEnabled: (process.env.EXPO_PUSH_ENABLED || 'false').toLowerCase() === 'true',
 };

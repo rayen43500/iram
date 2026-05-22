@@ -2,13 +2,26 @@ const CreditType = require('../models/CreditType');
 const CreditRequest = require('../models/CreditRequest');
 const Loan = require('../models/Loan');
 const User = require('../models/User');
-const { fn, col } = require('sequelize');
+const { fn, col, Op } = require('sequelize');
+const { createUserNotification } = require('../utils/notificationService');
 
 async function listAllRequests(req, res) {
+  const { status, q, from, to } = req.query;
+  const where = {};
+  if (status && ['pending', 'accepted', 'rejected'].includes(status)) {
+    where.status = status;
+  }
+  if (from || to) {
+    where.createdAt = {};
+    if (from) where.createdAt[Op.gte] = new Date(from);
+    if (to) where.createdAt[Op.lte] = new Date(to);
+  }
+
   const items = await CreditRequest.findAll({
+    where,
     order: [['createdAt', 'DESC']],
     include: [
-      { model: User, attributes: ['id', 'fullName', 'email'] },
+      { model: User, attributes: ['id', 'fullName', 'email'], where: q ? { [Op.or]: [{ fullName: { [Op.like]: `%${q}%` } }, { email: { [Op.like]: `%${q}%` } }] } : undefined, required: Boolean(q) },
       { model: CreditType, attributes: ['id', 'name', 'slug', 'annualRate'] },
     ],
   });
@@ -67,6 +80,19 @@ async function updateRequestStatus(req, res) {
       status: 'active',
     });
     }
+  }
+
+  if (status === 'accepted' || status === 'rejected') {
+    const title = status === 'accepted' ? 'Demande acceptee' : 'Demande refusee';
+    const message = status === 'accepted'
+      ? 'Votre demande de credit a ete acceptee. Un pret est maintenant actif.'
+      : 'Votre demande de credit a ete refusee. Vous pouvez consulter le detail dans l’application.';
+    await createUserNotification(request.userId, {
+      type: 'request_status',
+      title,
+      message,
+      data: { requestId: request.id, status },
+    });
   }
 
   return res.json(request);

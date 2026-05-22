@@ -1,9 +1,11 @@
-import React from 'react';
+import React, { useMemo } from 'react';
 import { View, Text, Pressable, StyleSheet } from 'react-native';
 import { COLORS, FONTS, RADIUS, SHADOW, SPACING } from './theme';
 
 // ── Status Badge ──
-export function StatusBadge({ status }) {
+export function StatusBadge({ status, colors }) {
+  const theme = colors || COLORS;
+  const styles = useMemo(() => createStyles(theme), [theme]);
   const n = String(status || '').toLowerCase();
   const isOk = n === 'accepted' || n === 'active' || n === 'paid';
   const isPending = n === 'pending';
@@ -15,41 +17,45 @@ export function StatusBadge({ status }) {
     : n === 'paid' ? 'Payée'
     : n === 'late' ? 'En retard'
     : String(status || 'Inconnu');
-  const bg = isOk ? COLORS.success : isPending ? COLORS.warning : COLORS.error;
-  const bgLight = isOk ? COLORS.successBg : isPending ? COLORS.warningBg : COLORS.errorBg;
+  const bg = isOk ? theme.success : isPending ? theme.warning : theme.error;
+  const bgLight = isOk ? theme.successBg : isPending ? theme.warningBg : theme.errorBg;
   return (
-    <View style={[cStyles.badge, { backgroundColor: bgLight }]}>
-      <View style={[cStyles.badgeDot, { backgroundColor: bg }]} />
-      <Text style={[cStyles.badgeText, { color: bg }]}>{label}</Text>
+    <View style={[styles.badge, { backgroundColor: bgLight }]}> 
+      <View style={[styles.badgeDot, { backgroundColor: bg }]} />
+      <Text style={[styles.badgeText, { color: bg }]}>{label}</Text>
     </View>
   );
 }
 
 // ── Empty State ──
-export function EmptyState({ icon, title, description }) {
+export function EmptyState({ icon, title, description, colors }) {
+  const theme = colors || COLORS;
+  const styles = useMemo(() => createStyles(theme), [theme]);
   return (
-    <View style={cStyles.emptyBox}>
-      {icon ? <Text style={cStyles.emptyIcon}>{icon}</Text> : null}
-      <Text style={cStyles.emptyTitle}>{title}</Text>
-      <Text style={cStyles.emptyDesc}>{description}</Text>
+    <View style={styles.emptyBox}>
+      {icon ? <Text style={styles.emptyIcon}>{icon}</Text> : null}
+      <Text style={styles.emptyTitle}>{title}</Text>
+      <Text style={styles.emptyDesc}>{description}</Text>
     </View>
   );
 }
 
 // ── Bottom Tab Bar ──
-export function BottomTabBar({ tabs, active, onPress }) {
+export function BottomTabBar({ tabs, active, onPress, colors }) {
+  const theme = colors || COLORS;
+  const styles = useMemo(() => createStyles(theme), [theme]);
   const compactTabs = tabs.length >= 5;
   return (
-    <View style={[cStyles.tabBar, compactTabs && cStyles.tabBarCompact]}>
+    <View style={[styles.tabBar, compactTabs && styles.tabBarCompact]}>
       {tabs.map((tab) => {
         const isActive = active === tab.key;
         const Icon = tab.icon;
         return (
-          <Pressable key={tab.key} style={cStyles.tabItem} onPress={() => onPress(tab.key)}>
-            <View style={[cStyles.tabIconWrap, compactTabs && cStyles.tabIconWrapCompact, isActive && cStyles.tabIconWrapActive]}>
-              <Icon size={compactTabs ? 18 : 20} color={isActive ? COLORS.white : COLORS.textSecondary} strokeWidth={isActive ? 2.2 : 1.8} />
+          <Pressable key={tab.key} style={styles.tabItem} onPress={() => onPress(tab.key)}>
+            <View style={[styles.tabIconWrap, compactTabs && styles.tabIconWrapCompact, isActive && styles.tabIconWrapActive]}>
+              <Icon size={compactTabs ? 18 : 20} color={isActive ? theme.white : theme.textSecondary} strokeWidth={isActive ? 2.2 : 1.8} />
             </View>
-            <Text style={[cStyles.tabLabel, compactTabs && cStyles.tabLabelCompact, isActive && cStyles.tabLabelActive]}>{tab.label}</Text>
+            <Text style={[styles.tabLabel, compactTabs && styles.tabLabelCompact, isActive && styles.tabLabelActive]}>{tab.label}</Text>
           </Pressable>
         );
       })}
@@ -58,70 +64,85 @@ export function BottomTabBar({ tabs, active, onPress }) {
 }
 
 // ── KPI Stat Card ──
-export function KpiCard({ icon, label, value, color }) {
+export function KpiCard({ icon, label, value, color, colors }) {
+  const theme = colors || COLORS;
+  const styles = useMemo(() => createStyles(theme), [theme]);
   const Icon = icon;
   return (
-    <View style={cStyles.kpiCard}>
-      <View style={[cStyles.kpiIconWrap, { backgroundColor: (color || COLORS.secondary) + '15' }]}>
-        <Icon size={18} color={color || COLORS.secondary} strokeWidth={2} />
+    <View style={styles.kpiCard}>
+      <View style={[styles.kpiIconWrap, { backgroundColor: (color || theme.secondary) + '15' }]}> 
+        <Icon size={18} color={color || theme.secondary} strokeWidth={2} />
       </View>
-      <Text style={cStyles.kpiLabel}>{label}</Text>
-      <Text style={cStyles.kpiValue}>{value}</Text>
+      <Text style={styles.kpiLabel}>{label}</Text>
+      <Text style={styles.kpiValue}>{value}</Text>
     </View>
   );
 }
 
 // ── Section Card ──
-export function SectionCard({ children, style }) {
-  return <View style={[cStyles.sectionCard, style]}>{children}</View>;
+export function SectionCard({ children, style, colors }) {
+  const theme = colors || COLORS;
+  const styles = useMemo(() => createStyles(theme), [theme]);
+  return <View style={[styles.sectionCard, style]}>{children}</View>;
 }
 
 // ── Section Title ──
-export function SectionTitle({ children }) {
-  return <Text style={cStyles.sectionTitle}>{children}</Text>;
+export function SectionTitle({ children, colors }) {
+  const theme = colors || COLORS;
+  const styles = useMemo(() => createStyles(theme), [theme]);
+  return <Text style={styles.sectionTitle}>{children}</Text>;
 }
 
 // ── Primary Button ──
-export function PrimaryButton({ label, onPress, disabled, loading }) {
+export function PrimaryButton({ label, onPress, disabled, loading, colors }) {
+  const theme = colors || COLORS;
+  const styles = useMemo(() => createStyles(theme), [theme]);
   return (
     <Pressable
-      style={({ pressed }) => [cStyles.btnPrimary, pressed && { opacity: 0.9, transform: [{ scale: 0.98 }] }, disabled && { opacity: 0.5 }]}
+      style={({ pressed }) => [styles.btnPrimary, pressed && { opacity: 0.9, transform: [{ scale: 0.98 }] }, disabled && { opacity: 0.5 }]}
       onPress={onPress}
       disabled={disabled}
     >
-      <Text style={cStyles.btnPrimaryText}>{loading ? '⏳' : ''} {label}</Text>
+      <Text style={styles.btnPrimaryText}>{loading ? '⏳' : ''} {label}</Text>
     </Pressable>
   );
 }
 
 // ── Secondary Button ──
-export function SecondaryButton({ label, onPress, disabled }) {
+export function SecondaryButton({ label, onPress, disabled, colors }) {
+  const theme = colors || COLORS;
+  const styles = useMemo(() => createStyles(theme), [theme]);
   return (
     <Pressable
-      style={({ pressed }) => [cStyles.btnSecondary, pressed && { opacity: 0.85 }, disabled && { opacity: 0.5 }]}
+      style={({ pressed }) => [styles.btnSecondary, pressed && { opacity: 0.85 }, disabled && { opacity: 0.5 }]}
       onPress={onPress}
       disabled={disabled}
     >
-      <Text style={cStyles.btnSecondaryText}>{label}</Text>
+      <Text style={styles.btnSecondaryText}>{label}</Text>
     </Pressable>
   );
 }
 
 // ── Input Field ──
-export function InputLabel({ children }) {
-  return <Text style={cStyles.inputLabel}>{children}</Text>;
+export function InputLabel({ children, colors }) {
+  const theme = colors || COLORS;
+  const styles = useMemo(() => createStyles(theme), [theme]);
+  return <Text style={styles.inputLabel}>{children}</Text>;
 }
 
 // ── Chat Bubble ──
-export function ChatBubble({ text, isUser }) {
+export function ChatBubble({ text, isUser, colors }) {
+  const theme = colors || COLORS;
+  const styles = useMemo(() => createStyles(theme), [theme]);
   return (
-    <View style={[cStyles.bubble, isUser ? cStyles.bubbleUser : cStyles.bubbleBot]}>
-      <Text style={[cStyles.bubbleText, isUser ? cStyles.bubbleTextUser : cStyles.bubbleTextBot]}>{text}</Text>
+    <View style={[styles.bubble, isUser ? styles.bubbleUser : styles.bubbleBot]}>
+      <Text style={[styles.bubbleText, isUser ? styles.bubbleTextUser : styles.bubbleTextBot]}>{text}</Text>
     </View>
   );
 }
 
-const cStyles = StyleSheet.create({
+function createStyles(colors) {
+  return StyleSheet.create({
   // Badge
   badge: { flexDirection: 'row', alignItems: 'center', borderRadius: RADIUS.full, paddingHorizontal: 10, paddingVertical: 5, gap: 5 },
   badgeDot: { width: 7, height: 7, borderRadius: 4 },
@@ -129,41 +150,42 @@ const cStyles = StyleSheet.create({
   // Empty
   emptyBox: { alignItems: 'center', padding: SPACING.xxl, gap: 6 },
   emptyIcon: { fontSize: 32, marginBottom: 4 },
-  emptyTitle: { fontFamily: FONTS.bold, color: COLORS.text, fontSize: 15 },
-  emptyDesc: { fontFamily: FONTS.regular, color: COLORS.textSecondary, fontSize: 13, textAlign: 'center' },
+  emptyTitle: { fontFamily: FONTS.bold, color: colors.text, fontSize: 15 },
+  emptyDesc: { fontFamily: FONTS.regular, color: colors.textSecondary, fontSize: 13, textAlign: 'center' },
   // Tab bar
   tabBar: {
-    flexDirection: 'row', backgroundColor: COLORS.white, borderTopWidth: 1, borderTopColor: COLORS.borderLight,
+    flexDirection: 'row', backgroundColor: colors.white, borderTopWidth: 1, borderTopColor: colors.borderLight,
     paddingBottom: 18, paddingTop: 8, ...SHADOW.soft,
   },
   tabBarCompact: { paddingBottom: 12, paddingTop: 6 },
   tabItem: { flex: 1, alignItems: 'center', gap: 3 },
   tabIconWrap: { width: 36, height: 36, borderRadius: 12, alignItems: 'center', justifyContent: 'center' },
   tabIconWrapCompact: { width: 32, height: 32, borderRadius: 10 },
-  tabIconWrapActive: { backgroundColor: COLORS.primary },
-  tabLabel: { fontFamily: FONTS.medium, fontSize: 10, color: COLORS.textSecondary },
+  tabIconWrapActive: { backgroundColor: colors.primary },
+  tabLabel: { fontFamily: FONTS.medium, fontSize: 10, color: colors.textSecondary },
   tabLabelCompact: { fontSize: 9 },
-  tabLabelActive: { color: COLORS.primary, fontFamily: FONTS.bold },
+  tabLabelActive: { color: colors.primary, fontFamily: FONTS.bold },
   // KPI
-  kpiCard: { flex: 1, backgroundColor: COLORS.white, borderRadius: RADIUS.lg, padding: SPACING.lg, gap: 6, ...SHADOW.card },
+  kpiCard: { flex: 1, backgroundColor: colors.white, borderRadius: RADIUS.lg, padding: SPACING.lg, gap: 6, ...SHADOW.card },
   kpiIconWrap: { width: 34, height: 34, borderRadius: 10, alignItems: 'center', justifyContent: 'center' },
-  kpiLabel: { fontFamily: FONTS.medium, fontSize: 12, color: COLORS.textSecondary },
-  kpiValue: { fontFamily: FONTS.extraBold, fontSize: 17, color: COLORS.text },
+  kpiLabel: { fontFamily: FONTS.medium, fontSize: 12, color: colors.textSecondary },
+  kpiValue: { fontFamily: FONTS.extraBold, fontSize: 17, color: colors.text },
   // SectionCard
-  sectionCard: { backgroundColor: COLORS.white, borderRadius: RADIUS.lg, padding: SPACING.lg, gap: SPACING.md, ...SHADOW.card },
-  sectionTitle: { fontFamily: FONTS.bold, fontSize: 17, color: COLORS.text, marginBottom: 2 },
+  sectionCard: { backgroundColor: colors.white, borderRadius: RADIUS.lg, padding: SPACING.lg, gap: SPACING.md, ...SHADOW.card },
+  sectionTitle: { fontFamily: FONTS.bold, fontSize: 17, color: colors.text, marginBottom: 2 },
   // Buttons
-  btnPrimary: { backgroundColor: COLORS.primary, borderRadius: RADIUS.md, paddingVertical: 14, alignItems: 'center', ...SHADOW.elevated },
-  btnPrimaryText: { color: COLORS.white, fontFamily: FONTS.bold, fontSize: 15, letterSpacing: 0.3 },
-  btnSecondary: { borderWidth: 1.5, borderColor: COLORS.primary, borderRadius: RADIUS.md, paddingVertical: 13, alignItems: 'center', backgroundColor: COLORS.white },
-  btnSecondaryText: { color: COLORS.primary, fontFamily: FONTS.bold, fontSize: 14 },
+  btnPrimary: { backgroundColor: colors.primary, borderRadius: RADIUS.md, paddingVertical: 14, alignItems: 'center', ...SHADOW.elevated },
+  btnPrimaryText: { color: colors.white, fontFamily: FONTS.bold, fontSize: 15, letterSpacing: 0.3 },
+  btnSecondary: { borderWidth: 1.5, borderColor: colors.primary, borderRadius: RADIUS.md, paddingVertical: 13, alignItems: 'center', backgroundColor: colors.white },
+  btnSecondaryText: { color: colors.primary, fontFamily: FONTS.bold, fontSize: 14 },
   // Input
-  inputLabel: { fontFamily: FONTS.semiBold, fontSize: 13, color: COLORS.text, marginBottom: 4 },
+  inputLabel: { fontFamily: FONTS.semiBold, fontSize: 13, color: colors.text, marginBottom: 4 },
   // Chat
   bubble: { maxWidth: '82%', padding: 12, borderRadius: RADIUS.lg, marginBottom: 8 },
-  bubbleUser: { backgroundColor: COLORS.chatUserBubble, alignSelf: 'flex-end', borderBottomRightRadius: 4 },
-  bubbleBot: { backgroundColor: COLORS.chatBotBubble, alignSelf: 'flex-start', borderBottomLeftRadius: 4 },
+  bubbleUser: { backgroundColor: colors.chatUserBubble, alignSelf: 'flex-end', borderBottomRightRadius: 4 },
+  bubbleBot: { backgroundColor: colors.chatBotBubble, alignSelf: 'flex-start', borderBottomLeftRadius: 4 },
   bubbleText: { fontFamily: FONTS.regular, fontSize: 14, lineHeight: 20 },
-  bubbleTextUser: { color: COLORS.white },
-  bubbleTextBot: { color: COLORS.text },
-});
+  bubbleTextUser: { color: colors.white },
+  bubbleTextBot: { color: colors.text },
+  });
+}

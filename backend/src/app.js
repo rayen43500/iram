@@ -9,6 +9,9 @@ const requestRoutes = require('./routes/requestRoutes');
 const estimationRoutes = require('./routes/estimationRoutes');
 const adminRoutes = require('./routes/adminRoutes');
 const chatbotRoutes = require('./routes/chatbotRoutes');
+const notificationRoutes = require('./routes/notificationRoutes');
+const simulationRoutes = require('./routes/simulationRoutes');
+const documentRoutes = require('./routes/documentRoutes');
 
 const app = express();
 
@@ -26,6 +29,9 @@ app.use('/api/requests', requestRoutes);
 app.use('/api/estimation', estimationRoutes);
 app.use('/api/admin', adminRoutes);
 app.use('/api/chatbot', chatbotRoutes);
+app.use('/api/notifications', notificationRoutes);
+app.use('/api/simulations', simulationRoutes);
+app.use('/api/documents', documentRoutes);
 
 app.use((err, req, res, next) => {
   console.error(err);

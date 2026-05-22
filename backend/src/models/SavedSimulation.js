@@ -1,28 +1,25 @@
 const { DataTypes } = require('sequelize');
 const { sequelize } = require('../config/sequelize');
 
-const Loan = sequelize.define(
-  'Loan',
+const SavedSimulation = sequelize.define(
+  'SavedSimulation',
   {
     id: { type: DataTypes.INTEGER.UNSIGNED, autoIncrement: true, primaryKey: true },
     userId: { type: DataTypes.INTEGER.UNSIGNED, allowNull: false },
     creditTypeId: { type: DataTypes.INTEGER.UNSIGNED, allowNull: false },
+    label: { type: DataTypes.STRING, allowNull: false, defaultValue: '' },
     amount: { type: DataTypes.FLOAT, allowNull: false },
     durationMonths: { type: DataTypes.INTEGER, allowNull: false },
     annualRate: { type: DataTypes.FLOAT, allowNull: false },
     monthlyPayment: { type: DataTypes.FLOAT, allowNull: false },
-    remainingInstallments: { type: DataTypes.INTEGER, allowNull: false },
-    status: {
-      type: DataTypes.ENUM('active', 'paid', 'late'),
-      allowNull: false,
-      defaultValue: 'active',
-    },
-    lastReminderAt: { type: DataTypes.DATE, allowNull: true, defaultValue: null },
+    totalCost: { type: DataTypes.FLOAT, allowNull: false },
+    debtRatio: { type: DataTypes.FLOAT, allowNull: false },
+    acceptanceProbability: { type: DataTypes.FLOAT, allowNull: false },
   },
   {
-    tableName: 'loans',
+    tableName: 'saved_simulations',
     timestamps: true,
   }
 );
 
-module.exports = Loan;
+module.exports = SavedSimulation;

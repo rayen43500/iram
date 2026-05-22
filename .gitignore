@@ -34,6 +34,8 @@ backend/data/
 frontend/.expo/
 frontend/dist/
 frontend/web-build/
+frontend/_verify_web/
+frontend/.expo-verify/
 frontend/expo-env.d.ts
 frontend/.kotlin/
 frontend/.metro-health-check*

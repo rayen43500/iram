@@ -4,6 +4,7 @@ const Loan = require('../models/Loan');
 const env = require('../config/env');
 const { buildEstimation } = require('../utils/estimate');
 const { parseApplicationForm } = require('../utils/applicationForm');
+const { createUserNotification } = require('../utils/notificationService');
 
 async function createRequest(req, res) {
   const { creditTypeId, requestedAmount, requestedDurationMonths } = req.body;
@@ -81,6 +82,17 @@ async function createRequest(req, res) {
     status: 'pending',
     applicationForm: formResult.data,
   });
+
+  try {
+    await createUserNotification(req.user.id, {
+      type: 'system',
+      title: 'Demande enregistree',
+      message: `Votre demande ${creditType.name} est en cours d'etude (${normalizedAmount} TND, ${normalizedDuration} mois).`,
+      data: { requestId: created.id, status: 'pending' },
+    });
+  } catch (err) {
+    console.warn('[request] notification client non envoyee:', err.message);
+  }
 
   return res.status(201).json(created);
 }

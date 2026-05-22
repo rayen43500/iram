@@ -13,6 +13,13 @@ const User = sequelize.define(
     balance: { type: DataTypes.FLOAT, allowNull: false, defaultValue: 0 },
     /** URL distante ou image en data URL (JPEG/PNG) */
     avatarUrl: { type: DataTypes.TEXT, allowNull: true, defaultValue: null },
+    phone: { type: DataTypes.STRING, allowNull: true, defaultValue: null },
+    city: { type: DataTypes.STRING, allowNull: true, defaultValue: null },
+    profession: { type: DataTypes.STRING, allowNull: true, defaultValue: null },
+    emailVerified: { type: DataTypes.BOOLEAN, allowNull: false, defaultValue: false },
+    otpCode: { type: DataTypes.STRING, allowNull: true, defaultValue: null },
+    otpExpiresAt: { type: DataTypes.DATE, allowNull: true, defaultValue: null },
+    lastLoginAt: { type: DataTypes.DATE, allowNull: true, defaultValue: null },
   },
   {
     tableName: 'users',

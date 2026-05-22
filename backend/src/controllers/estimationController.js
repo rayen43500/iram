@@ -4,7 +4,8 @@ const Loan = require('../models/Loan');
 const { buildEstimation } = require('../utils/estimate');
 
 async function estimate(req, res) {
-  const { creditTypeId, amount, durationMonths, salary } = req.body;
+  const body = req.body && typeof req.body === 'object' ? req.body : {};
+  const { creditTypeId, amount, durationMonths, salary } = body;
   if (!creditTypeId || !amount || !durationMonths || !salary) {
     return res.status(400).json({ message: 'creditTypeId, amount, durationMonths et salary sont requis' });
   }
