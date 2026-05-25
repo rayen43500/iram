@@ -5,7 +5,7 @@ const { buildEstimation } = require('../utils/estimate');
 
 async function estimate(req, res) {
   const body = req.body && typeof req.body === 'object' ? req.body : {};
-  const { creditTypeId, amount, durationMonths, salary } = body;
+  const { creditTypeId, amount, durationMonths, salary, monthlyOtherIncome } = body;
   if (!creditTypeId || !amount || !durationMonths || !salary) {
     return res.status(400).json({ message: 'creditTypeId, amount, durationMonths et salary sont requis' });
   }
@@ -13,6 +13,7 @@ async function estimate(req, res) {
   const normalizedAmount = Number(amount);
   const normalizedDuration = Number(durationMonths);
   const normalizedSalary = Number(salary);
+  const normalizedOtherIncome = Number(monthlyOtherIncome || 0);
 
   if (
     Number.isNaN(normalizedAmount) ||
@@ -20,7 +21,9 @@ async function estimate(req, res) {
     Number.isNaN(normalizedSalary) ||
     normalizedAmount <= 0 ||
     normalizedDuration <= 0 ||
-    normalizedSalary <= 0
+    normalizedSalary <= 0 ||
+    Number.isNaN(normalizedOtherIncome) ||
+    normalizedOtherIncome < 0
   ) {
     return res.status(400).json({ message: 'amount, durationMonths et salary doivent etre > 0' });
   }
@@ -49,13 +52,20 @@ async function estimate(req, res) {
     annualRate: creditType.annualRate,
     durationMonths: normalizedDuration,
     salary: normalizedSalary,
+    extraMonthlyIncome: normalizedOtherIncome,
     existingMonthlyDebt,
     maxDebtRatio: env.scoringMaxDebtRatio,
   });
 
   return res.json({
     creditType: { id: creditType.id, name: creditType.name, annualRate: creditType.annualRate },
-    input: { amount: normalizedAmount, durationMonths: normalizedDuration, salary: normalizedSalary, existingMonthlyDebt },
+    input: {
+      amount: normalizedAmount,
+      durationMonths: normalizedDuration,
+      salary: normalizedSalary,
+      monthlyOtherIncome: normalizedOtherIncome,
+      existingMonthlyDebt,
+    },
     estimation: result,
   });
 }

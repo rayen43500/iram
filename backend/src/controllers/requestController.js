@@ -4,7 +4,7 @@ const Loan = require('../models/Loan');
 const env = require('../config/env');
 const { buildEstimation } = require('../utils/estimate');
 const { parseApplicationForm } = require('../utils/applicationForm');
-const { createUserNotification } = require('../utils/notificationService');
+const { createUserNotification, createRoleNotification } = require('../utils/notificationService');
 
 async function createRequest(req, res) {
   const { creditTypeId, requestedAmount, requestedDurationMonths } = req.body;
@@ -65,6 +65,7 @@ async function createRequest(req, res) {
     annualRate: creditType.annualRate,
     durationMonths: normalizedDuration,
     salary: Number(req.user.salary || 0),
+    extraMonthlyIncome: formResult.data.monthlyOtherIncome || 0,
     existingMonthlyDebt,
     maxDebtRatio: env.scoringMaxDebtRatio,
   });
@@ -92,6 +93,17 @@ async function createRequest(req, res) {
     });
   } catch (err) {
     console.warn('[request] notification client non envoyee:', err.message);
+  }
+
+  try {
+    await createRoleNotification('admin', {
+      type: 'system',
+      title: 'Nouvelle demande client',
+      message: `${req.user.fullName} a soumis ${creditType.name} (${normalizedAmount} TND, ${normalizedDuration} mois).`,
+      data: { requestId: created.id, userId: req.user.id, creditTypeId: creditType.id },
+    });
+  } catch (err) {
+    console.warn('[request] notification admin non envoyee:', err.message);
   }
 
   return res.status(201).json(created);

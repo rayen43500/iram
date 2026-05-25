@@ -1,5 +1,6 @@
 const Notification = require('../models/Notification');
 const NotificationDevice = require('../models/NotificationDevice');
+const User = require('../models/User');
 const { sendExpoPushNotification } = require('./push');
 
 async function createUserNotification(userId, { type = 'system', title, message, data = null }) {
@@ -20,4 +21,11 @@ async function createUserNotification(userId, { type = 'system', title, message,
   return notification;
 }
 
-module.exports = { createUserNotification };
+async function createRoleNotification(role, payload) {
+  const users = await User.findAll({ where: { role }, attributes: ['id'] });
+  if (!users.length) return [];
+  const tasks = users.map((u) => createUserNotification(u.id, payload));
+  return Promise.all(tasks);
+}
+
+module.exports = { createUserNotification, createRoleNotification };

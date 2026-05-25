@@ -108,3 +108,6 @@ cd frontend && npm run verify
 ## Variables d’environnement
 
 Voir `backend/.env.example` et `frontend/.env.example`.
+-------|--------------|------|
+| admin@bank.local | Admin@1234 | admin |
+| client1@bank.local | Client@1234 | client |

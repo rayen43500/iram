@@ -1,9 +1,10 @@
 import { StatusBar } from 'expo-status-bar';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import {
-  ActivityIndicator, Animated, Easing, Image, Platform, Pressable, RefreshControl, SafeAreaView, ScrollView,
+  ActivityIndicator, Animated, Easing, Image, Platform, Pressable, RefreshControl, ScrollView,
   StyleSheet, Text, TextInput, TouchableOpacity, View, Dimensions, Modal, useWindowDimensions
 } from 'react-native';
+import { SafeAreaProvider, SafeAreaView } from 'react-native-safe-area-context';
 import { Inter_400Regular, Inter_500Medium, Inter_600SemiBold, Inter_700Bold, Inter_800ExtraBold, useFonts } from '@expo-google-fonts/inter';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Home, CreditCard, Calculator, MessageCircle, ShieldCheck, Wallet, Banknote, LogOut, RefreshCw, User, Send, ChevronRight, TrendingUp, Clock, CheckCircle2, XCircle, BarChart3, Users, FileText, Search, Filter, Eye, EyeOff, Menu, LayoutDashboard, ClipboardList, CircleUser, X as XIcon, Bell, Fingerprint, Moon, Sun, Camera, Upload, FileDown, QrCode, Globe, Lock } from 'lucide-react-native';
@@ -274,6 +275,17 @@ export default function App() {
     return null;
   }
 
+  async function refreshNotifications(authToken = token) {
+    if (!authToken) return;
+    try {
+      const notifs = await apiRequest('/notifications', {}, authToken);
+      setNotifications(notifs || []);
+      setUnreadCount((notifs || []).filter((n) => !n.isRead).length);
+    } catch (e) {
+      setError(e.message || 'Chargement notifications impossible.');
+    }
+  }
+
   async function loadAdminRequests(authToken = token) {
     if (!authToken) return;
     try {
@@ -321,6 +333,13 @@ export default function App() {
       return null;
     }
   }
+
+  useEffect(() => {
+    const sub = Notifications.addNotificationReceivedListener(() => {
+      refreshNotifications();
+    });
+    return () => sub.remove();
+  }, [token]);
 
   async function attemptBiometricLogin() {
     if (!storedToken) {
@@ -505,7 +524,29 @@ export default function App() {
       setError('Biométrie non disponible sur cet appareil.');
       return;
     }
-    setBiometricEnabled((prev) => !prev);
+    if (biometricEnabled) {
+      setBiometricEnabled(false);
+      setNotice('Biométrie désactivée.');
+      return;
+    }
+    try {
+      setBiometricBusy(true);
+      const result = await LocalAuthentication.authenticateAsync({
+        promptMessage: 'Activer la biométrie',
+        cancelLabel: 'Annuler',
+        disableDeviceFallback: false,
+      });
+      if (!result.success) {
+        setError('Activation biométrique annulée.');
+        return;
+      }
+      setBiometricEnabled(true);
+      setNotice('Biométrie activée.');
+    } catch (e) {
+      setError(e.message || 'Activation biométrique impossible.');
+    } finally {
+      setBiometricBusy(false);
+    }
   }
 
   async function onPickProfileAvatar() {
@@ -749,7 +790,17 @@ export default function App() {
     try {
       setError(''); setNotice(''); setIsActionBusy(true);
       const sal = Number(dashboard?.client?.salary || user?.salary || 0);
-      const r = await apiRequest('/estimation', { method: 'POST', body: JSON.stringify({ creditTypeId: Number(selectedCreditTypeId), amount: Number(amount), durationMonths: Number(durationMonths), salary: sal }) }, token);
+      const monthlyOtherIncome = Number(String(reqOtherIncome).replace(',', '.')) || 0;
+      const r = await apiRequest('/estimation', {
+        method: 'POST',
+        body: JSON.stringify({
+          creditTypeId: Number(selectedCreditTypeId),
+          amount: Number(amount),
+          durationMonths: Number(durationMonths),
+          salary: sal,
+          monthlyOtherIncome,
+        }),
+      }, token);
       setEstimationResult(r); setShowSchedule(false); setNotice('Estimation calculée !');
     } catch (e) { setError(e.message || 'Estimation impossible.'); } finally { setIsActionBusy(false); }
   }
@@ -830,95 +881,99 @@ export default function App() {
   // ─── SPLASH ───
   if (!fontsLoaded) {
     return (
-      <SafeAreaView style={s.safe}>
-        <View style={s.splash}>
-          <LinearGradient colors={[COLORS.gradientStart, COLORS.gradientEnd]} style={s.splashGrad}>
-            <Animated.Image source={ATB_LOGO} style={[s.splashLogo, { transform: [{ scale: splashPulse }] }]} resizeMode="contain" />
-            <Text style={s.splashTitle}>ATB</Text>
-            <Text style={s.splashSub}>Mobile Banking</Text>
-            <ActivityIndicator color={COLORS.white} size="large" style={{ marginTop: 24 }} />
-          </LinearGradient>
-        </View>
-        <StatusBar style="light" />
-      </SafeAreaView>
+      <SafeAreaProvider>
+        <SafeAreaView style={s.safe}>
+          <View style={s.splash}>
+            <LinearGradient colors={[COLORS.gradientStart, COLORS.gradientEnd]} style={s.splashGrad}>
+              <Animated.Image source={ATB_LOGO} style={[s.splashLogo, { transform: [{ scale: splashPulse }] }]} resizeMode="contain" />
+              <Text style={s.splashTitle}>ATB</Text>
+              <Text style={s.splashSub}>Mobile Banking</Text>
+              <ActivityIndicator color={COLORS.white} size="large" style={{ marginTop: 24 }} />
+            </LinearGradient>
+          </View>
+          <StatusBar style="light" />
+        </SafeAreaView>
+      </SafeAreaProvider>
     );
   }
 
   // ─── AUTH ───
   if (!isAuthenticated) {
     return (
-      <SafeAreaView style={s.safe}>
-        <ScrollView contentContainerStyle={[s.authWrap, isCompact && { padding: SPACING.lg, gap: SPACING.lg }]} keyboardShouldPersistTaps="handled">
-          <View style={s.authHeader}>
-            <Image source={ATB_LOGO} style={s.authLogo} resizeMode="contain" />
-            <Text style={s.authTitle}>{t('common.appName')}</Text>
-            <Text style={s.authSubtitle}>{t('common.appSubtitle')}</Text>
-          </View>
-
-          <View style={s.authCard}>
-            <View style={s.authToggle}>
-              <Pressable style={[s.authToggleBtn, authMode === 'login' && s.authToggleBtnActive]} onPress={() => setAuthMode('login')}>
-                <Text style={[s.authToggleText, authMode === 'login' && s.authToggleTextActive]}>{t('common.login')}</Text>
-              </Pressable>
-              <Pressable style={[s.authToggleBtn, authMode === 'register' && s.authToggleBtnActive]} onPress={() => setAuthMode('register')}>
-                <Text style={[s.authToggleText, authMode === 'register' && s.authToggleTextActive]}>{t('common.register')}</Text>
-              </Pressable>
+      <SafeAreaProvider>
+        <SafeAreaView style={s.safe}>
+          <ScrollView contentContainerStyle={[s.authWrap, isCompact && { padding: SPACING.lg, gap: SPACING.lg }]} keyboardShouldPersistTaps="handled">
+            <View style={s.authHeader}>
+              <Image source={ATB_LOGO} style={s.authLogo} resizeMode="contain" />
+              <Text style={s.authTitle}>{t('common.appName')}</Text>
+              <Text style={s.authSubtitle}>{t('common.appSubtitle')}</Text>
             </View>
 
-            {authMode === 'register' && (
-              <>
-                <TextInput style={s.input} value={fullName} onChangeText={setFullName} placeholder={t('auth.fullName')} placeholderTextColor={COLORS.textLight} />
-                <View style={s.rowInputs}>
-                  <TextInput style={[s.input, { flex: 1 }]} value={salary} onChangeText={setSalary} placeholder={t('auth.salary')} keyboardType="numeric" placeholderTextColor={COLORS.textLight} />
-                  <TextInput style={[s.input, { flex: 1 }]} value={balance} onChangeText={setBalance} placeholder={t('auth.balance')} keyboardType="numeric" placeholderTextColor={COLORS.textLight} />
-                </View>
-              </>
-            )}
-            <TextInput style={s.input} value={email} onChangeText={setEmail} autoCapitalize="none" placeholder={t('auth.email')} placeholderTextColor={COLORS.textLight} keyboardType="email-address" />
-            <View style={s.passwordField}>
-              <TextInput
-                style={s.passwordInput}
-                value={password}
-                onChangeText={setPassword}
-                secureTextEntry={!passwordVisible}
-                placeholder={t('auth.password')}
-                placeholderTextColor={COLORS.textLight}
-                autoCapitalize="none"
-                autoCorrect={false}
-                accessibilityLabel="Mot de passe"
-                textContentType="password"
-                autoComplete={passwordVisible ? 'off' : 'password'}
-                importantForAutofill="yes"
-              />
-              <Pressable
-                style={({ pressed }) => [s.passwordReveal, pressed && { opacity: 0.7 }]}
-                onPress={() => setPasswordVisible((v) => !v)}
-                hitSlop={12}
-                accessibilityRole="button"
-                accessibilityLabel={passwordVisible ? 'Masquer le mot de passe' : 'Afficher le mot de passe'}
-              >
-                {passwordVisible ? <EyeOff size={22} color={COLORS.primary} strokeWidth={2} /> : <Eye size={22} color={COLORS.textSecondary} strokeWidth={2} />}
-              </Pressable>
+            <View style={s.authCard}>
+              <View style={s.authToggle}>
+                <Pressable style={[s.authToggleBtn, authMode === 'login' && s.authToggleBtnActive]} onPress={() => setAuthMode('login')}>
+                  <Text style={[s.authToggleText, authMode === 'login' && s.authToggleTextActive]}>{t('common.login')}</Text>
+                </Pressable>
+                <Pressable style={[s.authToggleBtn, authMode === 'register' && s.authToggleBtnActive]} onPress={() => setAuthMode('register')}>
+                  <Text style={[s.authToggleText, authMode === 'register' && s.authToggleTextActive]}>{t('common.register')}</Text>
+                </Pressable>
+              </View>
+
+              {authMode === 'register' && (
+                <>
+                  <TextInput style={s.input} value={fullName} onChangeText={setFullName} placeholder={t('auth.fullName')} placeholderTextColor={COLORS.textLight} />
+                  <View style={s.rowInputs}>
+                    <TextInput style={[s.input, { flex: 1 }]} value={salary} onChangeText={setSalary} placeholder={t('auth.salary')} keyboardType="numeric" placeholderTextColor={COLORS.textLight} />
+                    <TextInput style={[s.input, { flex: 1 }]} value={balance} onChangeText={setBalance} placeholder={t('auth.balance')} keyboardType="numeric" placeholderTextColor={COLORS.textLight} />
+                  </View>
+                </>
+              )}
+              <TextInput style={s.input} value={email} onChangeText={setEmail} autoCapitalize="none" placeholder={t('auth.email')} placeholderTextColor={COLORS.textLight} keyboardType="email-address" />
+              <View style={s.passwordField}>
+                <TextInput
+                  style={s.passwordInput}
+                  value={password}
+                  onChangeText={setPassword}
+                  secureTextEntry={!passwordVisible}
+                  placeholder={t('auth.password')}
+                  placeholderTextColor={COLORS.textLight}
+                  autoCapitalize="none"
+                  autoCorrect={false}
+                  accessibilityLabel="Mot de passe"
+                  textContentType="password"
+                  autoComplete={passwordVisible ? 'off' : 'password'}
+                  importantForAutofill="yes"
+                />
+                <Pressable
+                  style={({ pressed }) => [s.passwordReveal, pressed && { opacity: 0.7 }]}
+                  onPress={() => setPasswordVisible((v) => !v)}
+                  hitSlop={12}
+                  accessibilityRole="button"
+                  accessibilityLabel={passwordVisible ? 'Masquer le mot de passe' : 'Afficher le mot de passe'}
+                >
+                  {passwordVisible ? <EyeOff size={22} color={COLORS.primary} strokeWidth={2} /> : <Eye size={22} color={COLORS.textSecondary} strokeWidth={2} />}
+                </Pressable>
+              </View>
+
+              <PrimaryButton label={authMode === 'login' ? t('auth.loginBtn') : t('auth.registerBtn')} onPress={authMode === 'login' ? onLogin : onRegister} disabled={isAuthBusy} loading={isAuthBusy} colors={COLORS} />
+
+              {storedToken && biometricEnabled ? (
+                <SecondaryButton
+                  label={biometricBusy ? t('common.loading') : t('common.biometricLogin')}
+                  onPress={attemptBiometricLogin}
+                  disabled={biometricBusy}
+                  colors={COLORS}
+                />
+              ) : null}
+
+              <Text style={s.helper}>{t('auth.testAccounts')}</Text>
+              {notice ? <Text style={s.noticeText}>{notice}</Text> : null}
+              {error ? <Text style={s.errorText}>{error}</Text> : null}
             </View>
-
-            <PrimaryButton label={authMode === 'login' ? t('auth.loginBtn') : t('auth.registerBtn')} onPress={authMode === 'login' ? onLogin : onRegister} disabled={isAuthBusy} loading={isAuthBusy} colors={COLORS} />
-
-            {storedToken && biometricEnabled ? (
-              <SecondaryButton
-                label={biometricBusy ? t('common.loading') : t('common.biometricLogin')}
-                onPress={attemptBiometricLogin}
-                disabled={biometricBusy}
-                colors={COLORS}
-              />
-            ) : null}
-
-            <Text style={s.helper}>{t('auth.testAccounts')}</Text>
-            {notice ? <Text style={s.noticeText}>{notice}</Text> : null}
-            {error ? <Text style={s.errorText}>{error}</Text> : null}
-          </View>
-        </ScrollView>
-        <StatusBar style={darkMode ? 'light' : 'dark'} />
-      </SafeAreaView>
+          </ScrollView>
+          <StatusBar style={darkMode ? 'light' : 'dark'} />
+        </SafeAreaView>
+      </SafeAreaProvider>
     );
   }
 
@@ -946,6 +1001,11 @@ export default function App() {
   const adminRailReserve = isAdmin && view === 'admin' && width >= ADMIN_NAV_BREAKPOINT ? 224 : 0;
   const chartEdgePad = isCompact ? 40 : 56;
   const adminChartWidth = width < 600 ? Math.max(210, width - adminRailReserve - chartEdgePad) : 300;
+  const adminGridItemStyle = {
+    flexBasis: width < 520 ? '48%' : '31%',
+    flexGrow: 1,
+    minWidth: 140,
+  };
 
   const trimmedAvatarUrl = profileAvatarUrlInput.trim();
   const avatarUrlPreviewOk = trimmedAvatarUrl && (trimmedAvatarUrl.startsWith('http://') || trimmedAvatarUrl.startsWith('https://') || trimmedAvatarUrl.startsWith('data:image/'));
@@ -953,9 +1013,10 @@ export default function App() {
   const showProfileScreen = (!isAdmin && view === 'profile') || (isAdmin && view === 'admin' && adminPage === 'profile');
 
   return (
-    <SafeAreaView style={s.safe} onTouchStart={resetIdleTimer}>
-      {/* Header */}
-      <View style={[s.header, isCompact && s.headerCompact]}>
+    <SafeAreaProvider>
+      <SafeAreaView style={s.safe} onTouchStart={resetIdleTimer}>
+        {/* Header */}
+        <View style={[s.header, isCompact && s.headerCompact]}>
         <View style={s.headerLeft}>
           {isAdmin && view === 'admin' && width < ADMIN_NAV_BREAKPOINT ? (
             <TouchableOpacity style={s.headerIconBtn} onPress={() => setAdminSidebarOpen(true)}>
@@ -967,7 +1028,7 @@ export default function App() {
             <Image source={{ uri: user.avatarUrl }} style={s.headerUserAvatar} />
           ) : null}
           <View style={{ flexShrink: 1 }}>
-            <Text style={s.headerGreet}>Bonjour 👋</Text>
+            <Text style={s.headerGreet}>Bonjour</Text>
             <Text style={[s.headerName, isTiny && { fontSize: 14 }]} numberOfLines={1}>{user?.fullName}</Text>
           </View>
         </View>
@@ -1364,12 +1425,24 @@ export default function App() {
             {adminSummary ? (
                 <>
                   <View style={s.adminGrid}>
-                    <KpiCard icon={FileText} label="Total demandes" value={adminSummary.totalRequests} color={COLORS.primary} {...themed} />
-                    <KpiCard icon={Clock} label="En attente" value={adminSummary.pendingRequests} color={COLORS.warning} {...themed} />
-                    <KpiCard icon={CheckCircle2} label="Acceptées" value={adminSummary.acceptedRequests} color={COLORS.success} {...themed} />
-                    <KpiCard icon={XCircle} label="Refusées" value={adminSummary.rejectedRequests} color={COLORS.error} {...themed} />
-                    <KpiCard icon={TrendingUp} label="Taux" value={formatPercent(adminSummary.acceptanceRate)} color={COLORS.success} {...themed} />
-                    <KpiCard icon={Banknote} label="Montant total" value={formatMoney(adminSummary.totalRequested)} color={COLORS.secondary} {...themed} />
+                    <View style={adminGridItemStyle}>
+                      <KpiCard icon={FileText} label="Total demandes" value={adminSummary.totalRequests} color={COLORS.primary} {...themed} />
+                    </View>
+                    <View style={adminGridItemStyle}>
+                      <KpiCard icon={Clock} label="En attente" value={adminSummary.pendingRequests} color={COLORS.warning} {...themed} />
+                    </View>
+                    <View style={adminGridItemStyle}>
+                      <KpiCard icon={CheckCircle2} label="Acceptées" value={adminSummary.acceptedRequests} color={COLORS.success} {...themed} />
+                    </View>
+                    <View style={adminGridItemStyle}>
+                      <KpiCard icon={XCircle} label="Refusées" value={adminSummary.rejectedRequests} color={COLORS.error} {...themed} />
+                    </View>
+                    <View style={adminGridItemStyle}>
+                      <KpiCard icon={TrendingUp} label="Taux" value={formatPercent(adminSummary.acceptanceRate)} color={COLORS.success} {...themed} />
+                    </View>
+                    <View style={adminGridItemStyle}>
+                      <KpiCard icon={Banknote} label="Montant total" value={formatMoney(adminSummary.totalRequested)} color={COLORS.secondary} {...themed} />
+                    </View>
                   </View>
                   <View style={{ flexDirection: 'row', flexWrap: 'wrap', marginTop: 16 }}>
                     <View style={{ flex: 1, minWidth: 250, alignItems: 'center' }}>
@@ -1787,7 +1860,8 @@ export default function App() {
 
       <BottomTabBar tabs={isAdmin ? tabsAdmin : tabsClient} active={view} onPress={setView} {...themed} />
       <StatusBar style={darkMode ? 'light' : 'dark'} />
-    </SafeAreaView>
+      </SafeAreaView>
+    </SafeAreaProvider>
   );
 }
 

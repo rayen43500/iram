@@ -1,3 +1,13 @@
+import 'intl';
+import 'intl/locale-data/jsonp/en';
+import 'intl/locale-data/jsonp/fr';
+import 'intl/locale-data/jsonp/ar';
+import '@formatjs/intl-getcanonicallocales/polyfill';
+import '@formatjs/intl-locale/polyfill';
+import '@formatjs/intl-pluralrules/polyfill';
+import '@formatjs/intl-pluralrules/locale-data/en';
+import '@formatjs/intl-pluralrules/locale-data/fr';
+import '@formatjs/intl-pluralrules/locale-data/ar';
 import i18n from 'i18next';
 import { initReactI18next } from 'react-i18next';
 

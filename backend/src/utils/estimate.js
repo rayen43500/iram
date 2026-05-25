@@ -36,11 +36,12 @@ function buildAmortizationSchedule({ amount, annualRate, durationMonths, monthly
   return schedule;
 }
 
-function buildEstimation({ amount, annualRate, durationMonths, salary, existingMonthlyDebt = 0, maxDebtRatio = 0.35 }) {
+function buildEstimation({ amount, annualRate, durationMonths, salary, extraMonthlyIncome = 0, existingMonthlyDebt = 0, maxDebtRatio = 0.35 }) {
   const installment = monthlyPayment(amount, annualRate, durationMonths);
   const totalRepayment = installment * durationMonths;
   const totalCost = totalRepayment - amount;
-  const debtRatio = salary > 0 ? (existingMonthlyDebt + installment) / salary : 1;
+  const totalIncome = Number(salary || 0) + Number(extraMonthlyIncome || 0);
+  const debtRatio = totalIncome > 0 ? (existingMonthlyDebt + installment) / totalIncome : 1;
   const acceptanceProbability = normalizeProbabilityFromDebtRatio(debtRatio, maxDebtRatio);
   const amortizationSchedule = buildAmortizationSchedule({ amount, annualRate, durationMonths, monthlyPaymentValue: installment });
 
