@@ -134,6 +134,10 @@ async function ensureColumn(tableName, columnName, ddlSql) {
 }
 
 async function ensureUserSecurityColumns() {
+  await ensureColumn('users', 'accountNumber', 'ALTER TABLE `users` ADD COLUMN `accountNumber` VARCHAR(64) NULL');
+  await ensureColumn('users', 'cin', 'ALTER TABLE `users` ADD COLUMN `cin` VARCHAR(32) NULL');
+  await ensureColumn('users', 'firstName', 'ALTER TABLE `users` ADD COLUMN `firstName` VARCHAR(120) NULL');
+  await ensureColumn('users', 'lastName', 'ALTER TABLE `users` ADD COLUMN `lastName` VARCHAR(120) NULL');
   await ensureColumn('users', 'emailVerified', 'ALTER TABLE `users` ADD COLUMN `emailVerified` TINYINT(1) NOT NULL DEFAULT 0');
   await ensureColumn('users', 'otpCode', 'ALTER TABLE `users` ADD COLUMN `otpCode` VARCHAR(10) NULL');
   await ensureColumn('users', 'otpExpiresAt', 'ALTER TABLE `users` ADD COLUMN `otpExpiresAt` DATETIME NULL');
@@ -145,6 +149,14 @@ async function ensureUserSecurityColumns() {
 
 async function ensureLoanReminderColumn() {
   await ensureColumn('loans', 'lastReminderAt', 'ALTER TABLE `loans` ADD COLUMN `lastReminderAt` DATETIME NULL');
+}
+
+async function ensureCreditTypeCategoryColumn() {
+  await ensureColumn('credit_types', 'category', 'ALTER TABLE `credit_types` ADD COLUMN `category` VARCHAR(140) NULL');
+  await ensureColumn('credit_types', 'shortDescription', 'ALTER TABLE `credit_types` ADD COLUMN `shortDescription` TEXT NULL');
+  await ensureColumn('credit_types', 'features', 'ALTER TABLE `credit_types` ADD COLUMN `features` JSON NULL');
+  await ensureColumn('credit_types', 'hasDocuments', 'ALTER TABLE `credit_types` ADD COLUMN `hasDocuments` TINYINT(1) NOT NULL DEFAULT 1');
+  await ensureColumn('credit_types', 'pdfFiles', 'ALTER TABLE `credit_types` ADD COLUMN `pdfFiles` JSON NULL');
 }
 
 async function connectDb({ forceSync = false } = {}) {
@@ -159,6 +171,7 @@ async function connectDb({ forceSync = false } = {}) {
   await ensureUserAvatarUrlColumn();
   await ensureUserSecurityColumns();
   await ensureLoanReminderColumn();
+  await ensureCreditTypeCategoryColumn();
   console.log('MySQL connecte');
 }
 

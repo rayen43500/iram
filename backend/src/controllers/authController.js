@@ -16,24 +16,49 @@ function normalizeEmail(email) {
   return typeof email === 'string' ? email.trim().toLowerCase() : '';
 }
 
-async function register(req, res) {
-  const { fullName, email, password, salary = 0, balance = 0 } = req.body;
-  const normalizedEmail = normalizeEmail(email);
-  const normalizedName = typeof fullName === 'string' ? fullName.trim() : '';
-  const normalizedPassword = typeof password === 'string' ? password : '';
-  const normalizedSalary = Number(salary);
-  const normalizedBalance = Number(balance);
+async function checkEmail(req, res) {
+  const normalizedEmail = normalizeEmail(req.body?.email);
+  if (!normalizedEmail) {
+    return res.status(400).json({ message: 'email est requis' });
+  }
+  const existingUser = await User.findOne({ where: { email: normalizedEmail } });
+  return res.json({ exists: Boolean(existingUser) });
+}
 
-  if (!normalizedName || !normalizedEmail || !normalizedPassword) {
-    return res.status(400).json({ message: 'fullName, email et password sont requis' });
+async function register(req, res) {
+  const { accountNumber, cin, firstName, lastName, email, password, confirmPassword, salary = 0 } = req.body;
+  const normalizedAccountNumber = typeof accountNumber === 'string' ? accountNumber.trim() : '';
+  const normalizedCin = typeof cin === 'string' ? cin.trim() : '';
+  const normalizedFirstName = typeof firstName === 'string' ? firstName.trim() : '';
+  const normalizedLastName = typeof lastName === 'string' ? lastName.trim() : '';
+  const normalizedEmail = normalizeEmail(email);
+  const normalizedPassword = typeof password === 'string' ? password : '';
+  const normalizedConfirm = typeof confirmPassword === 'string' ? confirmPassword : '';
+  const normalizedSalary = Number(salary);
+  const normalizedBalance = 0;
+
+  if (!normalizedAccountNumber || !normalizedCin || !normalizedFirstName || !normalizedLastName || !normalizedEmail || !normalizedPassword || !normalizedConfirm) {
+    return res.status(400).json({ message: 'accountNumber, cin, firstName, lastName, email, password et confirmPassword sont requis' });
+  }
+
+  if (!/^\d{6,30}$/.test(normalizedAccountNumber)) {
+    return res.status(400).json({ message: 'Numero de compte invalide' });
+  }
+
+  if (!/^\d{8}$/.test(normalizedCin)) {
+    return res.status(400).json({ message: 'CIN invalide' });
   }
 
   if (normalizedPassword.length < 8) {
     return res.status(400).json({ message: 'Le mot de passe doit contenir au moins 8 caracteres' });
   }
 
-  if (Number.isNaN(normalizedSalary) || Number.isNaN(normalizedBalance) || normalizedSalary < 0 || normalizedBalance < 0) {
-    return res.status(400).json({ message: 'salary et balance doivent etre des valeurs positives' });
+  if (normalizedPassword !== normalizedConfirm) {
+    return res.status(400).json({ message: 'Confirmation mot de passe invalide' });
+  }
+
+  if (Number.isNaN(normalizedSalary) || normalizedSalary < 0) {
+    return res.status(400).json({ message: 'salary doit etre une valeur positive' });
   }
 
   const existingUser = await User.findOne({ where: { email: normalizedEmail } });
@@ -41,9 +66,23 @@ async function register(req, res) {
     return res.status(409).json({ message: 'Email deja utilise' });
   }
 
+  const existingAccount = await User.findOne({ where: { accountNumber: normalizedAccountNumber } });
+  if (existingAccount) {
+    return res.status(409).json({ message: 'Numero de compte deja utilise' });
+  }
+
+  const existingCin = await User.findOne({ where: { cin: normalizedCin } });
+  if (existingCin) {
+    return res.status(409).json({ message: 'CIN deja utilise' });
+  }
+
   const passwordHash = await bcrypt.hash(normalizedPassword, 10);
   const user = await User.create({
-    fullName: normalizedName,
+    accountNumber: normalizedAccountNumber,
+    cin: normalizedCin,
+    firstName: normalizedFirstName,
+    lastName: normalizedLastName,
+    fullName: `${normalizedFirstName} ${normalizedLastName}`.trim(),
     email: normalizedEmail,
     passwordHash,
     salary: normalizedSalary,
@@ -65,7 +104,18 @@ async function register(req, res) {
   const token = signToken(String(user.id));
   return res.status(201).json({
     token,
-    user: { id: user.id, fullName: user.fullName, email: user.email, role: user.role, avatarUrl: user.avatarUrl, emailVerified: user.emailVerified },
+    user: {
+      id: user.id,
+      accountNumber: user.accountNumber,
+      cin: user.cin,
+      firstName: user.firstName,
+      lastName: user.lastName,
+      fullName: user.fullName,
+      email: user.email,
+      role: user.role,
+      avatarUrl: user.avatarUrl,
+      emailVerified: user.emailVerified,
+    },
   });
 }
 
@@ -120,7 +170,18 @@ async function login(req, res) {
   const token = signToken(String(user.id));
   return res.json({
     token,
-    user: { id: user.id, fullName: user.fullName, email: user.email, role: user.role, avatarUrl: user.avatarUrl, emailVerified: user.emailVerified },
+    user: {
+      id: user.id,
+      accountNumber: user.accountNumber,
+      cin: user.cin,
+      firstName: user.firstName,
+      lastName: user.lastName,
+      fullName: user.fullName,
+      email: user.email,
+      role: user.role,
+      avatarUrl: user.avatarUrl,
+      emailVerified: user.emailVerified,
+    },
   });
 }
 
@@ -132,6 +193,10 @@ async function me(req, res) {
 
   return res.json({
     id: user.id,
+    accountNumber: user.accountNumber || null,
+    cin: user.cin || null,
+    firstName: user.firstName || null,
+    lastName: user.lastName || null,
     fullName: user.fullName,
     email: user.email,
     role: user.role,
@@ -227,6 +292,7 @@ async function updateProfile(req, res) {
 }
 
 module.exports = {
+  checkEmail,
   register,
   login,
   me,

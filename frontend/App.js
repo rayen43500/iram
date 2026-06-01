@@ -7,7 +7,7 @@ import {
 import { SafeAreaProvider, SafeAreaView } from 'react-native-safe-area-context';
 import { Inter_400Regular, Inter_500Medium, Inter_600SemiBold, Inter_700Bold, Inter_800ExtraBold, useFonts } from '@expo-google-fonts/inter';
 import { LinearGradient } from 'expo-linear-gradient';
-import { Home, CreditCard, Calculator, MessageCircle, ShieldCheck, Wallet, Banknote, LogOut, RefreshCw, User, Send, ChevronRight, TrendingUp, Clock, CheckCircle2, XCircle, BarChart3, Users, FileText, Search, Filter, Eye, EyeOff, Menu, LayoutDashboard, ClipboardList, CircleUser, X as XIcon, Bell, Fingerprint, Moon, Sun, Camera, Upload, FileDown, QrCode, Globe, Lock } from 'lucide-react-native';
+import { Home, CreditCard, Calculator, MessageCircle, ShieldCheck, Wallet, Banknote, LogOut, RefreshCw, User, Send, ChevronRight, TrendingUp, Clock, CheckCircle2, XCircle, BarChart3, Users, FileText, Search, Filter, Eye, EyeOff, Menu, LayoutDashboard, ClipboardList, CircleUser, X as XIcon, Bell, Fingerprint, Moon, Sun, Camera, Upload, FileDown, QrCode, Globe, Lock, Car, Calendar, DollarSign, Check, ChevronLeft, Percent } from 'lucide-react-native';
 import { PieChart, BarChart } from 'react-native-chart-kit';
 import * as LocalAuthentication from 'expo-local-authentication';
 import * as SecureStore from 'expo-secure-store';
@@ -29,12 +29,57 @@ const ATB_LOGO = require('./assets/image.png');
 function formatMoney(v) { return `${Number(v || 0).toLocaleString('fr-FR', { maximumFractionDigits: 2 })} TND`; }
 function formatPercent(v) { const n = Number(v || 0) * (v <= 1 ? 100 : 1); return `${n.toFixed(1)}%`; }
 
+function getCreditIcon(slug, size = 20, color = '#A6192E') {
+  const s = String(slug || '').toLowerCase();
+  if (s.includes('sayara') || s.includes('start')) return <Car size={size} color={color} />;
+  if (s.includes('sakan') || s.includes('renov')) return <Home size={size} color={color} />;
+  if (s.includes('mounassib') || s.includes('tahawel')) return <Banknote size={size} color={color} />;
+  return <CreditCard size={size} color={color} />;
+}
+
 const ADMIN_NAV_BREAKPOINT = 768;
 const IDLE_TIMEOUT_MINUTES = 10;
 const SECURE_TOKEN_KEY = 'iram.token';
 const BIOMETRIC_ENABLED_KEY = 'iram.biometricEnabled';
 const DARK_MODE_KEY = 'iram.darkMode';
 const LANGUAGE_KEY = 'iram.language';
+
+const IS_WEB = Platform.OS === 'web';
+
+async function storageGetItem(key) {
+  if (IS_WEB) {
+    try {
+      return globalThis?.localStorage?.getItem(key) ?? null;
+    } catch (e) {
+      return null;
+    }
+  }
+  return SecureStore.getItemAsync(key);
+}
+
+async function storageSetItem(key, value) {
+  if (IS_WEB) {
+    try {
+      globalThis?.localStorage?.setItem(key, value);
+    } catch (e) {
+      return;
+    }
+    return;
+  }
+  return SecureStore.setItemAsync(key, value);
+}
+
+async function storageDeleteItem(key) {
+  if (IS_WEB) {
+    try {
+      globalThis?.localStorage?.removeItem(key);
+    } catch (e) {
+      return;
+    }
+    return;
+  }
+  return SecureStore.deleteItemAsync(key);
+}
 const ADMIN_NAV = [
   { key: 'overview', label: 'Synthèse', icon: LayoutDashboard },
   { key: 'requests', label: 'Demandes', icon: ClipboardList },
@@ -70,11 +115,14 @@ export default function App() {
   const [biometricEnabled, setBiometricEnabled] = useState(false);
   const [biometricBusy, setBiometricBusy] = useState(false);
   const [authMode, setAuthMode] = useState('login');
-  const [fullName, setFullName] = useState('');
+  const [accountNumber, setAccountNumber] = useState('');
+  const [cin, setCin] = useState('');
+  const [lastName, setLastName] = useState('');
+  const [firstName, setFirstName] = useState('');
   const [email, setEmail] = useState('admin@bank.local');
   const [password, setPassword] = useState('Admin@1234');
+  const [confirmPasswordAuth, setConfirmPasswordAuth] = useState('');
   const [salary, setSalary] = useState('2500');
-  const [balance, setBalance] = useState('1000');
   const [dashboard, setDashboard] = useState(null);
   const [creditTypes, setCreditTypes] = useState([]);
   const [adminSummary, setAdminSummary] = useState(null);
@@ -99,12 +147,19 @@ export default function App() {
   const [adminRejectionReason, setAdminRejectionReason] = useState('');
   const [creditSearchQuery, setCreditSearchQuery] = useState('');
   const [creditOnlyActive, setCreditOnlyActive] = useState(false);
+  const [creditsSubView, setCreditsSubView] = useState('categories');
+  const [selectedCategory, setSelectedCategory] = useState(null);
+  const [selectedCredit, setSelectedCredit] = useState(null);
+  const [creditStartTab, setCreditStartTab] = useState('active');
   const [passwordVisible, setPasswordVisible] = useState(false);
+  const [confirmPasswordVisible, setConfirmPasswordVisible] = useState(false);
   const [currentPassword, setCurrentPassword] = useState('');
   const [newPassword, setNewPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [otpCode, setOtpCode] = useState('');
   const [otpStatus, setOtpStatus] = useState('');
+  const [authOtpCode, setAuthOtpCode] = useState('');
+  const [authOtpStatus, setAuthOtpStatus] = useState('');
   const [reqPhone, setReqPhone] = useState('');
   const [reqCity, setReqCity] = useState('');
   const [reqProfession, setReqProfession] = useState('');
@@ -154,10 +209,10 @@ export default function App() {
   async function initAppSettings() {
     try {
       const [savedToken, storedBio, storedDark, storedLang] = await Promise.all([
-        SecureStore.getItemAsync(SECURE_TOKEN_KEY),
-        SecureStore.getItemAsync(BIOMETRIC_ENABLED_KEY),
-        SecureStore.getItemAsync(DARK_MODE_KEY),
-        SecureStore.getItemAsync(LANGUAGE_KEY),
+        storageGetItem(SECURE_TOKEN_KEY),
+        storageGetItem(BIOMETRIC_ENABLED_KEY),
+        storageGetItem(DARK_MODE_KEY),
+        storageGetItem(LANGUAGE_KEY),
       ]);
 
       if (savedToken) setStoredToken(savedToken);
@@ -217,18 +272,18 @@ export default function App() {
   }, [isAuthenticated]);
 
   useEffect(() => {
-    SecureStore.setItemAsync(DARK_MODE_KEY, darkMode ? 'true' : 'false');
+    storageSetItem(DARK_MODE_KEY, darkMode ? 'true' : 'false');
   }, [darkMode]);
 
   useEffect(() => {
     if (language) {
       i18n.changeLanguage(language);
-      SecureStore.setItemAsync(LANGUAGE_KEY, language);
+      storageSetItem(LANGUAGE_KEY, language);
     }
   }, [language]);
 
   useEffect(() => {
-    SecureStore.setItemAsync(BIOMETRIC_ENABLED_KEY, biometricEnabled ? 'true' : 'false');
+    storageSetItem(BIOMETRIC_ENABLED_KEY, biometricEnabled ? 'true' : 'false');
   }, [biometricEnabled]);
 
   useEffect(() => {
@@ -305,7 +360,7 @@ export default function App() {
   async function saveSessionToken(tokenValue) {
     setToken(tokenValue);
     setStoredToken(tokenValue);
-    await SecureStore.setItemAsync(SECURE_TOKEN_KEY, tokenValue);
+    await storageSetItem(SECURE_TOKEN_KEY, tokenValue);
   }
 
   async function registerForPushNotifications(tokenValue) {
@@ -376,11 +431,33 @@ export default function App() {
   }
 
   async function onRegister() {
-    const n = fullName.trim(); const e = email.trim().toLowerCase();
-    if (!n || !e || !password) { setError('Nom, email et mot de passe obligatoires.'); return; }
+    const accountNo = accountNumber.trim();
+    const cinValue = cin.trim();
+    const last = lastName.trim();
+    const first = firstName.trim();
+    const e = email.trim().toLowerCase();
+    if (!accountNo || !cinValue || !last || !first || !e || !password || !confirmPasswordAuth) {
+      setError('Numero de compte, CIN, nom, prenom, email, mot de passe et confirmation obligatoires.');
+      return;
+    }
+    if (password !== confirmPasswordAuth) {
+      setError('Les mots de passe ne correspondent pas.');
+      return;
+    }
     try {
       setError(''); setNotice(''); setIsAuthBusy(true);
-      const r = await apiRequest('/auth/register', { method: 'POST', body: JSON.stringify({ fullName: n, email: e, password, salary: Number(salary || 0), balance: Number(balance || 0) }) });
+      const r = await apiRequest('/auth/register', {
+        method: 'POST',
+        body: JSON.stringify({
+          accountNumber: accountNo,
+          cin: cinValue,
+          lastName: last,
+          firstName: first,
+          email: e,
+          password,
+          confirmPassword: confirmPasswordAuth,
+        }),
+      });
       await saveSessionToken(r.token);
       setUser(r.user); setView(r.user.role === 'admin' ? 'admin' : 'dashboard'); setNotice('Compte créé avec succès !');
       await registerForPushNotifications(r.token);
@@ -396,7 +473,11 @@ export default function App() {
       const r = await apiRequest('/auth/login', { method: 'POST', body: JSON.stringify({ email: e, password, deviceName: Constants?.deviceName || Platform.OS }) });
       await saveSessionToken(r.token);
       setUser(r.user); setView(r.user.role === 'admin' ? 'admin' : 'dashboard');
-      setNotice(biometricAvailable ? 'Connexion réussie ! Activez la biométrie dans Profil → Sécurité.' : 'Connexion réussie !');
+      if (!r.user?.emailVerified) {
+        setNotice('Email non verifie. Veuillez le verifier pour activer toutes les fonctions.');
+      } else {
+        setNotice(biometricAvailable ? 'Connexion réussie ! Activez la biométrie dans Profil → Sécurité.' : 'Connexion réussie !');
+      }
       await registerForPushNotifications(r.token);
       resetIdleTimer();
     } catch (err) { setError(err.message || 'Connexion impossible.'); } finally { setIsAuthBusy(false); }
@@ -409,13 +490,14 @@ export default function App() {
     }
     setToken(''); setUser(null); setView('dashboard'); setDashboard(null); setCreditTypes([]);
     setSelectedCreditTypeId(''); setEstimationResult(null); setChatMessages([]); setAdminSummary(null); setAdminRequests([]); setNotice(''); setError('');
+    setCreditsSubView('categories'); setSelectedCategory(null); setSelectedCredit(null); setCreditStartTab('active');
     setReqPhone(''); setReqCity(''); setReqProfession(''); setReqProjectPurpose('');
     setReqOtherIncome(''); setReqNotes(''); setReqDeclareAccurate(false);
     setAdminPage('overview'); setAdminSidebarOpen(false); setProfileAvatarDraft(null); setProfileAvatarUrlInput('');
     setStoredToken(''); setSavedSimulations([]); setNotifications([]); setUnreadCount(0); setLoginHistory([]); setDocuments([]);
-    setCurrentPassword(''); setNewPassword(''); setConfirmPassword(''); setOtpCode(''); setOtpStatus('');
+    setCurrentPassword(''); setNewPassword(''); setConfirmPassword(''); setConfirmPasswordAuth(''); setOtpCode(''); setOtpStatus(''); setAuthOtpCode(''); setAuthOtpStatus('');
     setDocDraft(null); setCompareLeftId(''); setCompareRightId(''); setShowSchedule(false);
-    SecureStore.deleteItemAsync(SECURE_TOKEN_KEY);
+    storageDeleteItem(SECURE_TOKEN_KEY);
   }
 
   function pickProfileAvatarFromWebFile() {
@@ -748,6 +830,165 @@ export default function App() {
     }
   }
 
+  async function shareNamedPdfBase64(base64, filename) {
+    if (Platform.OS === 'web') {
+      try {
+        const link = document.createElement('a');
+        link.href = `data:application/pdf;base64,${base64}`;
+        link.download = filename;
+        link.click();
+        return;
+      } catch (err) {
+        setError('Téléchargement du PDF échoué sur le navigateur.');
+        return;
+      }
+    }
+    const shareOk = await Sharing.isAvailableAsync();
+    if (!shareOk) {
+      setError('Partage indisponible sur cet appareil.');
+      return;
+    }
+    const fileUri = `${FileSystem.cacheDirectory}${filename}`;
+    const encoding = FileSystem.EncodingType?.Base64 ?? 'base64';
+    await FileSystem.writeAsStringAsync(fileUri, base64, { encoding });
+    await Sharing.shareAsync(fileUri);
+  }
+
+  async function buildApplicationFormPdf(creditName) {
+    const pdf = await PDFDocument.create();
+    const page = pdf.addPage([595, 842]);
+    const fontBold = await pdf.embedFont(StandardFonts.Helvetica_Bold);
+    const font = await pdf.embedFont(StandardFonts.Helvetica);
+    const { height: pageHeight, width: pageWidth } = page.getSize();
+    
+    let y = pageHeight - 50;
+    
+    page.drawRectangle({
+      x: 40,
+      y: y - 50,
+      width: pageWidth - 80,
+      height: 60,
+      color: { r: 166/255, g: 25/255, b: 46/255 },
+    });
+    
+    page.drawText('ARAB TUNISIAN BANK - ATB', {
+      x: 60,
+      y: y - 25,
+      size: 16,
+      font: fontBold,
+      color: { r: 1, g: 1, b: 1 },
+    });
+    
+    page.drawText('DEMANDE DE CRÉDIT AUX PARTICULIERS', {
+      x: 60,
+      y: y - 42,
+      size: 10,
+      font: font,
+      color: { r: 1, g: 1, b: 1 },
+    });
+    
+    y -= 80;
+    
+    page.drawText(`Formulaire de Demande : ${creditName}`, {
+      x: 40,
+      y,
+      size: 14,
+      font: fontBold,
+      color: { r: 0.1, g: 0.1, b: 0.1 },
+    });
+    
+    y -= 30;
+    
+    page.drawText('INFORMATIONS DU DEMANDEUR', { x: 40, y, size: 11, font: fontBold });
+    y -= 15;
+    page.drawText(`Nom et Prénom : ${user?.fullName || 'Client'}`, { x: 50, y, size: 10, font });
+    y -= 15;
+    page.drawText(`Email : ${user?.email || ''}`, { x: 50, y, size: 10, font });
+    y -= 15;
+    page.drawText(`Téléphone : ${user?.phone || reqPhone || '—'}`, { x: 50, y, size: 10, font });
+    y -= 15;
+    page.drawText(`Ville / Adresse : ${user?.city || reqCity || '—'}`, { x: 50, y, size: 10, font });
+    y -= 15;
+    page.drawText(`Profession : ${user?.profession || reqProfession || '—'}`, { x: 50, y, size: 10, font });
+    y -= 15;
+    page.drawText(`Revenu mensuel : ${formatMoney(user?.salary || salary)}`, { x: 50, y, size: 10, font });
+    
+    y -= 30;
+    
+    page.drawText('CARACTÉRISTIQUES DE LA DEMANDE', { x: 40, y, size: 11, font: fontBold });
+    y -= 15;
+    page.drawText(`Type de Crédit sélectionné : ${creditName}`, { x: 50, y, size: 10, font });
+    
+    if (creditName === 'Crédit SAYARA') {
+      y -= 15;
+      page.drawText(`Montant : Sans plafond`, { x: 50, y, size: 10, font });
+      y -= 15;
+      page.drawText(`Financement : Jusqu'à 80% du prix du véhicule`, { x: 50, y, size: 10, font });
+      y -= 15;
+      page.drawText(`Durée de remboursement : Jusqu'à 7 ans`, { x: 50, y, size: 10, font });
+    } else if (creditName.includes('START')) {
+      y -= 15;
+      page.drawText(`Montant : Jusqu'à 2000 DT`, { x: 50, y, size: 10, font });
+      y -= 15;
+      page.drawText(`Durée de remboursement : Jusqu'à 36 mois`, { x: 50, y, size: 10, font });
+    }
+    
+    y -= 30;
+    
+    page.drawText('DOCUMENTS À FOURNIR', { x: 40, y, size: 11, font: fontBold });
+    y -= 15;
+    
+    const docsList = creditName === 'Crédit SAYARA' ? [
+      "- Pièce d'identité valide (CIN)",
+      "- Fiche de paie récente ou justificatif de revenu",
+      "- 3 dernières fiches de paie pour les salariés",
+      "- Déclaration Unique de Revenus (DUR) pour les non salariés",
+      "- 6 derniers relevés de l'ancien compte (nouveaux clients)",
+      "- Promesse de vente établie + copie carte grise (pour véhicule d'occasion)",
+      "- Facture pro forma (pour véhicule acheté auprès d'un concessionnaire)",
+      "- Demande de crédit ATB signée"
+    ] : [
+      "- Copie CIN",
+      "- Demande de crédit ATB",
+      "- 3 dernières fiches de paie ou DUR (caution ou client)",
+      "- Copie engagement avec l'Auto-école",
+      "- Justificatif d'adresse (STEG, SONEDE, Téléphone)",
+      "- Attestation de travail et attestation de salaire",
+      "- Caution solidaire (si bénéficiaire non actif)"
+    ];
+    
+    for (const docLine of docsList) {
+      page.drawText(docLine, { x: 50, y, size: 9, font });
+      y -= 14;
+    }
+    
+    y -= 25;
+    
+    page.drawText('Signature du Client', { x: 80, y, size: 10, font: fontBold });
+    page.drawText('Visa de la Banque', { x: pageWidth - 180, y, size: 10, font: fontBold });
+    
+    y -= 45;
+    page.drawText('________________________', { x: 60, y, size: 10, font });
+    page.drawText('________________________', { x: pageWidth - 200, y, size: 10, font });
+    
+    const base64 = await pdf.saveAsBase64({ dataUri: false });
+    return base64;
+  }
+
+  async function onDownloadDemandeCredit(creditName) {
+    try {
+      setError(''); setNotice(''); setIsActionBusy(true);
+      const base64 = await buildApplicationFormPdf(creditName);
+      if (!base64) return;
+      await shareNamedPdfBase64(base64, 'Demande-de-credit-aux-particuliers.pdf');
+      setNotice('Demande de crédit exportée.');
+    } catch (e) {
+      setError(e.message || 'Export impossible.');
+    } finally {
+      setIsActionBusy(false);
+    }
+  }
+
   function notificationTypeLabel(type) {
     const key = `notifications.types.${type || 'system'}`;
     const label = t(key);
@@ -921,11 +1162,10 @@ export default function App() {
 
               {authMode === 'register' && (
                 <>
-                  <TextInput style={s.input} value={fullName} onChangeText={setFullName} placeholder={t('auth.fullName')} placeholderTextColor={COLORS.textLight} />
-                  <View style={s.rowInputs}>
-                    <TextInput style={[s.input, { flex: 1 }]} value={salary} onChangeText={setSalary} placeholder={t('auth.salary')} keyboardType="numeric" placeholderTextColor={COLORS.textLight} />
-                    <TextInput style={[s.input, { flex: 1 }]} value={balance} onChangeText={setBalance} placeholder={t('auth.balance')} keyboardType="numeric" placeholderTextColor={COLORS.textLight} />
-                  </View>
+                  <TextInput style={s.input} value={accountNumber} onChangeText={setAccountNumber} placeholder={t('auth.accountNumber')} keyboardType="numeric" placeholderTextColor={COLORS.textLight} />
+                  <TextInput style={s.input} value={cin} onChangeText={setCin} placeholder={t('auth.cin')} keyboardType="numeric" placeholderTextColor={COLORS.textLight} />
+                  <TextInput style={s.input} value={lastName} onChangeText={setLastName} placeholder={t('auth.lastName')} placeholderTextColor={COLORS.textLight} />
+                  <TextInput style={s.input} value={firstName} onChangeText={setFirstName} placeholder={t('auth.firstName')} placeholderTextColor={COLORS.textLight} />
                 </>
               )}
               <TextInput style={s.input} value={email} onChangeText={setEmail} autoCapitalize="none" placeholder={t('auth.email')} placeholderTextColor={COLORS.textLight} keyboardType="email-address" />
@@ -954,8 +1194,42 @@ export default function App() {
                   {passwordVisible ? <EyeOff size={22} color={COLORS.primary} strokeWidth={2} /> : <Eye size={22} color={COLORS.textSecondary} strokeWidth={2} />}
                 </Pressable>
               </View>
+              {authMode === 'register' && (
+                <View style={s.passwordField}>
+                  <TextInput
+                    style={s.passwordInput}
+                    value={confirmPasswordAuth}
+                    onChangeText={setConfirmPasswordAuth}
+                    secureTextEntry={!confirmPasswordVisible}
+                    placeholder={t('auth.confirmPassword')}
+                    placeholderTextColor={COLORS.textLight}
+                    autoCapitalize="none"
+                    autoCorrect={false}
+                    accessibilityLabel="Confirmation mot de passe"
+                    textContentType="password"
+                    autoComplete={confirmPasswordVisible ? 'off' : 'password'}
+                    importantForAutofill="yes"
+                  />
+                  <Pressable
+                    style={({ pressed }) => [s.passwordReveal, pressed && { opacity: 0.7 }]}
+                    onPress={() => setConfirmPasswordVisible((v) => !v)}
+                    hitSlop={12}
+                    accessibilityRole="button"
+                    accessibilityLabel={confirmPasswordVisible ? 'Masquer la confirmation' : 'Afficher la confirmation'}
+                  >
+                    {confirmPasswordVisible ? <EyeOff size={22} color={COLORS.primary} strokeWidth={2} /> : <Eye size={22} color={COLORS.textSecondary} strokeWidth={2} />}
+                  </Pressable>
+                </View>
+              )}
 
               <PrimaryButton label={authMode === 'login' ? t('auth.loginBtn') : t('auth.registerBtn')} onPress={authMode === 'login' ? onLogin : onRegister} disabled={isAuthBusy} loading={isAuthBusy} colors={COLORS} />
+
+              <View style={s.otpRow}>
+                <SecondaryButton label={t('auth.sendOtp')} onPress={onRequestAuthOtp} disabled={isAuthBusy} colors={COLORS} />
+                <TextInput style={[s.input, s.otpInput]} value={authOtpCode} onChangeText={setAuthOtpCode} placeholder={t('auth.otpPlaceholder')} placeholderTextColor={COLORS.textLight} keyboardType="numeric" />
+                <PrimaryButton label={t('auth.verifyEmail')} onPress={onVerifyAuthOtp} disabled={isAuthBusy} colors={COLORS} />
+              </View>
+              {authOtpStatus ? <Text style={s.formHint}>{authOtpStatus}</Text> : null}
 
               {storedToken && biometricEnabled ? (
                 <SecondaryButton
@@ -1122,60 +1396,345 @@ export default function App() {
         {/* ── CREDITS ── */}
         {view === 'credits' && (
           <>
-          <SectionCard {...themed}>
-            <SectionTitle {...themed}>Types de crédits</SectionTitle>
-            <View style={s.creditFilters}>
-              <View style={[s.input, s.creditSearchInput]}>
-                <Search size={16} color={COLORS.textLight} />
-                <TextInput
-                  style={s.creditSearchText}
-                  placeholder="Rechercher un crédit..."
-                  placeholderTextColor={COLORS.textLight}
-                  value={creditSearchQuery}
-                  onChangeText={setCreditSearchQuery}
-                />
-              </View>
-              <Pressable style={[s.filterChip, creditOnlyActive && s.filterChipActive]} onPress={() => setCreditOnlyActive((v) => !v)}>
-                <Filter size={14} color={creditOnlyActive ? COLORS.white : COLORS.textLight} />
-                <Text style={[s.filterChipText, creditOnlyActive && s.filterChipTextActive]}>Actifs seulement</Text>
-              </Pressable>
-            </View>
-            {filteredCreditTypes.length === 0 ? <EmptyState icon="📁" title="Aucun type" description="Aucun résultat pour ce filtre." {...themed} /> : filteredCreditTypes.map((t) => {
-              const active = String(t.id) === String(selectedCreditTypeId);
-              return (
-                <Pressable key={t.id} style={[s.creditType, active && s.creditTypeActive]} onPress={() => setSelectedCreditTypeId(String(t.id))}>
-                  <View style={s.listItemHead}>
-                    <Text style={s.listItemTitle}>{t.name}</Text>
-                    <View style={s.rateTag}><Text style={s.rateTagText}>{t.annualRate}%</Text></View>
+            {creditsSubView === 'categories' && (
+              <>
+                <SectionCard {...themed}>
+                  <SectionTitle {...themed}>Crédits ATB</SectionTitle>
+                  <Text style={s.proLead}>
+                    Découvrez nos offres de crédit sur-mesure conçues pour vous accompagner dans tous vos projets de vie.
+                  </Text>
+                  
+                  <View style={{ gap: SPACING.md, marginTop: SPACING.sm }}>
+                    {[
+                      { name: 'Voitures', icon: Car, label: 'Voitures', desc: 'Crédit auto SAYARA, crédit START Permis...', color: COLORS.primary },
+                      { name: 'Immobilier', icon: Home, label: 'Immobilier', desc: 'Logement Sakan, Crédit Rénov...', color: COLORS.secondary },
+                      { name: 'Consommation', icon: Banknote, label: 'Consommation', desc: 'Prêt personnel Mounassib, Rachat Tahawel...', color: COLORS.warning },
+                      { name: 'Autres crédits', icon: CreditCard, label: 'Autres crédits', desc: 'Crédit Bien-être (Santé, Études...)', color: COLORS.success },
+                    ].map((cat) => {
+                      const CatIcon = cat.icon;
+                      return (
+                        <Pressable
+                          key={cat.name}
+                          style={[s.listItem, { flexDirection: 'row', alignItems: 'center', gap: 14, padding: SPACING.lg }]}
+                          onPress={() => {
+                            setSelectedCategory(cat.name);
+                            setCreditsSubView('category_detail');
+                          }}
+                        >
+                          <View style={{ width: 44, height: 44, borderRadius: 22, backgroundColor: cat.color + '15', alignItems: 'center', justifyContent: 'center' }}>
+                            <CatIcon size={22} color={cat.color} />
+                          </View>
+                          <View style={{ flex: 1 }}>
+                            <Text style={[s.listItemTitle, { fontSize: 16 }]}>{cat.label}</Text>
+                            <Text style={s.listItemSub}>{cat.desc}</Text>
+                          </View>
+                          <ChevronRight size={18} color={COLORS.textLight} />
+                        </Pressable>
+                      );
+                    })}
                   </View>
-                  <Text style={s.listItemSub}>{t.description}</Text>
-                  <Text style={s.listItemSub}>Montant : {formatMoney(t.minAmount)} – {formatMoney(t.maxAmount)}</Text>
-                  <Text style={s.listItemSub}>Durée : {t.minDurationMonths} – {t.maxDurationMonths} mois</Text>
-                  <Text style={s.listItemSub}>Documents : {(t.requiredDocuments || []).join(', ') || 'N/A'}</Text>
-                  {active && <View style={s.checkMark}><CheckCircle2 size={18} color={COLORS.primary} /></View>}
-                </Pressable>
-              );
-            })}
-          </SectionCard>
+                </SectionCard>
 
-          <SectionCard {...themed}>
-            <SectionTitle {...themed}>Historique complet des demandes</SectionTitle>
-            {requests.length === 0 ? (
-              <EmptyState icon="📋" title="Aucune demande" description="Soumettez une demande depuis Simulation." {...themed} />
-            ) : requests.map((r) => (
-              <View style={s.listItem} key={`hist-${r.id}`}>
-                <View style={s.listItemHead}>
-                  <Text style={s.listItemTitle}>{r.CreditType?.name || 'Crédit'}</Text>
-                  <StatusBadge status={r.status} {...themed} />
+                <SectionCard {...themed}>
+                  <SectionTitle {...themed}>Historique complet des demandes</SectionTitle>
+                  {requests.length === 0 ? (
+                    <EmptyState icon="📋" title="Aucune demande" description="Soumettez une demande depuis Simulation." {...themed} />
+                  ) : requests.map((r) => (
+                    <View style={s.listItem} key={`hist-${r.id}`}>
+                      <View style={s.listItemHead}>
+                        <Text style={s.listItemTitle}>{r.CreditType?.name || 'Crédit'}</Text>
+                        <StatusBadge status={r.status} {...themed} />
+                      </View>
+                      <Text style={s.listItemSub}>{formatMoney(r.requestedAmount)} • {r.requestedDurationMonths} mois • {formatPercent(r.acceptanceProbability || 0)}</Text>
+                      <View style={s.requestProgressTrack}>
+                        <View style={[s.requestProgressFill, { width: `${Math.round(requestProgress(r.status) * 100)}%` }]} />
+                      </View>
+                      <Text style={s.formHint}>{r.status === 'pending' ? 'En cours d’étude' : r.status === 'accepted' ? 'Dossier accepté' : 'Dossier refusé'}</Text>
+                    </View>
+                  ))}
+                </SectionCard>
+              </>
+            )}
+
+            {creditsSubView === 'category_detail' && (
+              <SectionCard {...themed}>
+                <TouchableOpacity
+                  style={{ flexDirection: 'row', alignItems: 'center', gap: 4, marginBottom: SPACING.sm }}
+                  onPress={() => setCreditsSubView('categories')}
+                >
+                  <ChevronLeft size={16} color={COLORS.primary} />
+                  <Text style={{ fontFamily: FONTS.semiBold, color: COLORS.primary, fontSize: 13 }}>Retour aux catégories</Text>
+                </TouchableOpacity>
+
+                <SectionTitle {...themed}>Catégorie : {selectedCategory}</SectionTitle>
+                
+                <View style={s.creditFilters}>
+                  <View style={[s.input, s.creditSearchInput]}>
+                    <Search size={16} color={COLORS.textLight} />
+                    <TextInput
+                      style={s.creditSearchText}
+                      placeholder="Rechercher un crédit..."
+                      placeholderTextColor={COLORS.textLight}
+                      value={creditSearchQuery}
+                      onChangeText={setCreditSearchQuery}
+                    />
+                  </View>
                 </View>
-                <Text style={s.listItemSub}>{formatMoney(r.requestedAmount)} • {r.requestedDurationMonths} mois • {formatPercent(r.acceptanceProbability || 0)}</Text>
-                <View style={s.requestProgressTrack}>
-                  <View style={[s.requestProgressFill, { width: `${Math.round(requestProgress(r.status) * 100)}%` }]} />
+
+                {(() => {
+                  const filtered = creditTypes.filter((t) => {
+                    const matchesCategory = String(t.category || '').toLowerCase() === String(selectedCategory || '').toLowerCase();
+                    const matchesQuery = String(t.name || '').toLowerCase().includes(creditSearchQuery.trim().toLowerCase());
+                    const matchesActive = !creditOnlyActive || Boolean(t.isActive);
+                    return matchesCategory && matchesQuery && matchesActive;
+                  });
+
+                  if (filtered.length === 0) {
+                    return <EmptyState icon="📂" title="Aucun crédit" description="Aucune offre disponible dans cette catégorie." {...themed} />;
+                  }
+
+                  return filtered.map((t) => (
+                    <View key={t.id} style={[s.creditType, { gap: 12, padding: SPACING.lg, borderRadius: 16, borderColor: COLORS.border }]}>
+                      <View style={[s.listItemHead, { alignItems: 'center' }]}>
+                        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, flex: 1 }}>
+                          <View style={{ width: 36, height: 36, borderRadius: 18, backgroundColor: COLORS.primary + '15', alignItems: 'center', justifyContent: 'center' }}>
+                            {getCreditIcon(t.slug, 18, COLORS.primary)}
+                          </View>
+                          <Text style={[s.listItemTitle, { fontSize: 16, flexShrink: 1 }]} numberOfLines={1}>{t.name}</Text>
+                        </View>
+                        <View style={s.rateTag}><Text style={s.rateTagText}>{t.annualRate}%</Text></View>
+                      </View>
+                      <Text style={[s.listItemSub, { fontSize: 13, lineHeight: 18 }]} numberOfLines={2}>
+                        {t.shortDescription || t.description}
+                      </Text>
+                      <View style={{ flexDirection: 'row', gap: 12, flexWrap: 'wrap', marginTop: 2 }}>
+                        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
+                          <DollarSign size={14} color={COLORS.textSecondary} />
+                          <Text style={{ fontSize: 12, color: COLORS.textSecondary, fontFamily: FONTS.medium }}>
+                            {t.name === 'Crédit SAYARA' ? 'Sans plafond' : `${formatMoney(t.minAmount)} – ${formatMoney(t.maxAmount)}`}
+                          </Text>
+                        </View>
+                        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
+                          <Calendar size={14} color={COLORS.textSecondary} />
+                          <Text style={{ fontSize: 12, color: COLORS.textSecondary, fontFamily: FONTS.medium }}>{t.minDurationMonths} – {t.maxDurationMonths} mois</Text>
+                        </View>
+                      </View>
+                      <View style={{ marginTop: 4 }}>
+                        <PrimaryButton
+                          label="Voir détails"
+                          onPress={() => {
+                            setSelectedCredit(t);
+                            setCreditsSubView('credit_detail');
+                          }}
+                          {...themed}
+                        />
+                      </View>
+                    </View>
+                  ));
+                })()}
+              </SectionCard>
+            )}
+
+            {creditsSubView === 'credit_detail' && selectedCredit && (
+              <SectionCard {...themed}>
+                <TouchableOpacity
+                  style={{ flexDirection: 'row', alignItems: 'center', gap: 4, marginBottom: SPACING.sm }}
+                  onPress={() => setCreditsSubView('category_detail')}
+                >
+                  <ChevronLeft size={16} color={COLORS.primary} />
+                  <Text style={{ fontFamily: FONTS.semiBold, color: COLORS.primary, fontSize: 13 }}>Retour à la catégorie</Text>
+                </TouchableOpacity>
+
+                <SectionTitle {...themed}>{selectedCredit.name}</SectionTitle>
+                
+                <View style={{ gap: SPACING.md }}>
+                  <Text style={[s.listItemSub, { fontSize: 14, lineHeight: 22, color: COLORS.text }]}>
+                    {selectedCredit.description}
+                  </Text>
+
+                  <View style={{ borderTopWidth: 1, borderColor: COLORS.borderLight, paddingTop: SPACING.md, gap: SPACING.sm }}>
+                    <Text style={{ fontFamily: FONTS.bold, fontSize: 14, color: COLORS.text, marginBottom: 4 }}>Caractéristiques du crédit :</Text>
+                    
+                    {/* Montant Row */}
+                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, paddingVertical: 4 }}>
+                      <View style={{ width: 28, height: 28, borderRadius: 14, backgroundColor: COLORS.success + '15', alignItems: 'center', justifyContent: 'center' }}>
+                        <DollarSign size={15} color={COLORS.success} />
+                      </View>
+                      <View style={{ flex: 1 }}>
+                        <Text style={{ fontFamily: FONTS.semiBold, fontSize: 11, color: COLORS.textSecondary }}>Montant</Text>
+                        <Text style={{ fontFamily: FONTS.bold, fontSize: 13, color: COLORS.text }}>
+                          {selectedCredit.name === 'Crédit SAYARA' ? 'Sans plafond' : 
+                           selectedCredit.name.includes('START') ? 'Jusqu\'à 2000 DT' : 
+                           `${formatMoney(selectedCredit.minAmount)} – ${formatMoney(selectedCredit.maxAmount)}`}
+                        </Text>
+                      </View>
+                    </View>
+
+                    {/* Financement Row */}
+                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, paddingVertical: 4 }}>
+                      <View style={{ width: 28, height: 28, borderRadius: 14, backgroundColor: COLORS.primary + '15', alignItems: 'center', justifyContent: 'center' }}>
+                        <Percent size={15} color={COLORS.primary} />
+                      </View>
+                      <View style={{ flex: 1 }}>
+                        <Text style={{ fontFamily: FONTS.semiBold, fontSize: 11, color: COLORS.textSecondary }}>Pourcentage de financement</Text>
+                        <Text style={{ fontFamily: FONTS.bold, fontSize: 13, color: COLORS.text }}>
+                          {selectedCredit.name === 'Crédit SAYARA' ? 'Jusqu\'à 80% du prix de la voiture' : 
+                           selectedCredit.name.includes('START') ? 'Financement direct de l\'auto-école' : 
+                           'Financement sur-mesure'}
+                        </Text>
+                      </View>
+                    </View>
+
+                    {/* Durée Row */}
+                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, paddingVertical: 4 }}>
+                      <View style={{ width: 28, height: 28, borderRadius: 14, backgroundColor: COLORS.warning + '15', alignItems: 'center', justifyContent: 'center' }}>
+                        <Calendar size={15} color={COLORS.warning} />
+                      </View>
+                      <View style={{ flex: 1 }}>
+                        <Text style={{ fontFamily: FONTS.semiBold, fontSize: 11, color: COLORS.textSecondary }}>Durée de remboursement</Text>
+                        <Text style={{ fontFamily: FONTS.bold, fontSize: 13, color: COLORS.text }}>
+                          {selectedCredit.name === 'Crédit SAYARA' ? 'Jusqu\'à 7 ans (84 mois)' : 
+                           selectedCredit.name.includes('START') ? 'Jusqu\'à 36 mois' : 
+                           `${selectedCredit.minDurationMonths} – ${selectedCredit.maxDurationMonths} mois`}
+                        </Text>
+                      </View>
+                    </View>
+
+                    {/* Conditions Spécifiques */}
+                    <View style={{ marginTop: 6, borderTopWidth: 1, borderColor: COLORS.borderLight, paddingTop: SPACING.md }}>
+                      <Text style={{ fontFamily: FONTS.bold, fontSize: 13, color: COLORS.text, marginBottom: 6 }}>Conditions & Avantages spécifiques :</Text>
+                      {selectedCredit.features && selectedCredit.features.length > 0 ? (
+                        selectedCredit.features.map((feature, idx) => (
+                          <View key={idx} style={{ flexDirection: 'row', alignItems: 'flex-start', gap: 8, paddingVertical: 4 }}>
+                            <CheckCircle2 size={14} color={COLORS.success} style={{ marginTop: 2 }} />
+                            <Text style={{ flex: 1, fontFamily: FONTS.medium, fontSize: 12, color: COLORS.textSecondary, lineHeight: 18 }}>
+                              {feature}
+                            </Text>
+                          </View>
+                        ))
+                      ) : (
+                        <Text style={{ fontFamily: FONTS.medium, fontSize: 12, color: COLORS.textLight }}>Aucune condition spécifique.</Text>
+                      )}
+                    </View>
+                  </View>
+
+                  <View style={{ gap: SPACING.sm, marginTop: SPACING.sm }}>
+                    {selectedCredit.hasDocuments && (
+                      <PrimaryButton
+                        label="Documents nécessaires pour le crédit"
+                        onPress={() => setCreditsSubView('credit_documents')}
+                        {...themed}
+                      />
+                    )}
+                    <SecondaryButton
+                      label="Simuler ce crédit"
+                      onPress={() => {
+                        setSelectedCreditTypeId(String(selectedCredit.id));
+                        setView('simulation');
+                      }}
+                      {...themed}
+                    />
+                  </View>
                 </View>
-                <Text style={s.formHint}>{r.status === 'pending' ? 'En cours d’étude' : r.status === 'accepted' ? 'Dossier accepté' : 'Dossier refusé'}</Text>
-              </View>
-            ))}
-          </SectionCard>
+              </SectionCard>
+            )}
+
+            {creditsSubView === 'credit_documents' && selectedCredit && (
+              <SectionCard {...themed}>
+                <TouchableOpacity
+                  style={{ flexDirection: 'row', alignItems: 'center', gap: 4, marginBottom: SPACING.sm }}
+                  onPress={() => setCreditsSubView('credit_detail')}
+                >
+                  <ChevronLeft size={16} color={COLORS.primary} />
+                  <Text style={{ fontFamily: FONTS.semiBold, color: COLORS.primary, fontSize: 13 }}>Retour aux détails</Text>
+                </TouchableOpacity>
+
+                <SectionTitle {...themed}>Documents requis : {selectedCredit.name}</SectionTitle>
+                <Text style={s.formHint}>Veuillez préparer les pièces justificatives suivantes pour la constitution de votre dossier de crédit.</Text>
+
+                {selectedCredit.name.includes('START') ? (
+                  <View style={{ gap: SPACING.md }}>
+                    <View style={s.authToggle}>
+                      <Pressable
+                        style={[s.authToggleBtn, creditStartTab === 'active' && s.authToggleBtnActive]}
+                        onPress={() => setCreditStartTab('active')}
+                      >
+                        <Text style={[s.authToggleText, creditStartTab === 'active' && s.authToggleTextActive]}>Bénéficiaire actif</Text>
+                      </Pressable>
+                      <Pressable
+                        style={[s.authToggleBtn, creditStartTab === 'inactive' && s.authToggleBtnActive]}
+                        onPress={() => setCreditStartTab('inactive')}
+                      >
+                        <Text style={[s.authToggleText, creditStartTab === 'inactive' && s.authToggleTextActive]}>Bénéficiaire non actif</Text>
+                      </Pressable>
+                    </View>
+
+                    <View style={{ gap: SPACING.sm }}>
+                      {(creditStartTab === 'active' ? [
+                        "Copie CIN",
+                        "Demande de crédit ATB",
+                        "3 dernières fiches de paie ou DUR",
+                        "Copie engagement avec Auto-école",
+                        "Justificatif d'adresse actuelle (STEG, SONEDE, Téléphone)",
+                        "Attestation de travail",
+                        "Attestation de salaire"
+                      ] : [
+                        "Copie CIN",
+                        "Demande de crédit ATB",
+                        "Caution solidaire",
+                        "Formulaire informations complémentaires personne physique pour caution",
+                        "Copie CIN de la caution",
+                        "3 dernières fiches de paie ou DUR de la caution",
+                        "Ordre prélèvement",
+                        "Domiciliation salaire ou cession salaire",
+                        "Ordre de virement si caution client ATB",
+                        "Copie engagement Auto-école",
+                        "Justificatif adresse client et caution",
+                        "Attestation travail caution",
+                        "Attestation salaire caution"
+                      ]).map((doc, idx) => (
+                        <View key={idx} style={{ flexDirection: 'row', alignItems: 'center', gap: 8, paddingVertical: 6, borderBottomWidth: 1, borderColor: COLORS.borderLight }}>
+                          <Check size={16} color={COLORS.success} />
+                          <Text style={{ fontFamily: FONTS.medium, fontSize: 13, color: COLORS.text, flex: 1 }}>{doc}</Text>
+                        </View>
+                      ))}
+                    </View>
+
+                    <View style={{ gap: SPACING.sm, marginTop: SPACING.sm }}>
+                      <PrimaryButton
+                        label="Télécharger la demande de crédit"
+                        onPress={() => onDownloadDemandeCredit(selectedCredit.name)}
+                        {...themed}
+                      />
+                    </View>
+                  </View>
+                ) : (
+                  <View style={{ gap: SPACING.md }}>
+                    <View style={{ gap: SPACING.sm }}>
+                      {(selectedCredit.requiredDocuments || []).map((doc, idx) => (
+                        <View key={idx} style={{ flexDirection: 'row', alignItems: 'center', gap: 8, paddingVertical: 6, borderBottomWidth: 1, borderColor: COLORS.borderLight }}>
+                          <Check size={16} color={COLORS.success} />
+                          <Text style={{ fontFamily: FONTS.medium, fontSize: 13, color: COLORS.text, flex: 1 }}>{doc}</Text>
+                        </View>
+                      ))}
+                    </View>
+
+                    {selectedCredit.pdfFiles && selectedCredit.pdfFiles.length > 0 && (
+                      <View style={{ gap: SPACING.sm, marginTop: SPACING.sm }}>
+                        {selectedCredit.pdfFiles.map((pdf, idx) => (
+                          <PrimaryButton
+                            key={idx}
+                            label={`Télécharger : ${pdf.name}`}
+                            onPress={() => onDownloadDemandeCredit(selectedCredit.name)}
+                            {...themed}
+                          />
+                        ))}
+                      </View>
+                    )}
+                  </View>
+                )}
+              </SectionCard>
+            )}
           </>
         )}
 

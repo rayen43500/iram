@@ -14,6 +14,11 @@ const CreditType = sequelize.define(
     maxDurationMonths: { type: DataTypes.INTEGER, allowNull: false },
     annualRate: { type: DataTypes.FLOAT, allowNull: false },
     requiredDocuments: { type: DataTypes.JSON, allowNull: false, defaultValue: [] },
+    category: { type: DataTypes.STRING, allowNull: true },
+    shortDescription: { type: DataTypes.TEXT, allowNull: true },
+    features: { type: DataTypes.JSON, allowNull: false, defaultValue: [] },
+    hasDocuments: { type: DataTypes.BOOLEAN, allowNull: false, defaultValue: true },
+    pdfFiles: { type: DataTypes.JSON, allowNull: false, defaultValue: [] },
     isActive: { type: DataTypes.BOOLEAN, allowNull: false, defaultValue: true },
   },
   {

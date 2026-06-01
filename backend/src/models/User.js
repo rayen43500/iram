@@ -5,6 +5,10 @@ const User = sequelize.define(
   'User',
   {
     id: { type: DataTypes.INTEGER.UNSIGNED, autoIncrement: true, primaryKey: true },
+    accountNumber: { type: DataTypes.STRING, allowNull: true, unique: true },
+    cin: { type: DataTypes.STRING, allowNull: true, unique: true },
+    firstName: { type: DataTypes.STRING, allowNull: true },
+    lastName: { type: DataTypes.STRING, allowNull: true },
     fullName: { type: DataTypes.STRING, allowNull: false },
     email: { type: DataTypes.STRING, allowNull: false, unique: true },
     passwordHash: { type: DataTypes.STRING, allowNull: false },
