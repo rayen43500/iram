@@ -6,6 +6,7 @@
   "scripts": {
     "start": "node index.js",
     "dev": "nodemon index.js",
+    "verify": "node -e \"require('./src/app'); require('./src/routes/authRoutes'); require('./src/routes/adminRoutes'); console.log('backend modules ok')\"",
     "seed": "node src/seed.js",
     "smoke": "node scripts/smoke-api.js"
   },

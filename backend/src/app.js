@@ -15,9 +15,10 @@ const documentRoutes = require('./routes/documentRoutes');
 
 const app = express();
 
+app.disable('x-powered-by');
 app.use(cors({ origin: env.frontendOrigin === '*' ? true : env.frontendOrigin }));
-app.use(express.json());
-app.use(morgan('dev'));
+app.use(express.json({ limit: '2mb' }));
+app.use(morgan(env.isProduction ? 'combined' : 'dev'));
 
 app.get('/health', (req, res) => {
   res.json({ status: 'ok', service: 'credit-backend' });

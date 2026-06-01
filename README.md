@@ -73,6 +73,7 @@ npm run dev
 ### Admin
 - Dashboard KPI + graphique
 - Demandes : recherche, statut, **filtre par dates**
+- Utilisateurs : recherche, filtre role, modification **client / admin**
 - Édition des offres de crédit
 - Décision accept / refus + notification client
 
@@ -108,6 +109,13 @@ cd frontend && npm run verify
 ## Variables d’environnement
 
 Voir `backend/.env.example` et `frontend/.env.example`.
+
+## Production
+
+- Backend : definir `NODE_ENV=production`, `MYSQL_PASSWORD`, un `JWT_SECRET` unique de 32+ caracteres, `FRONTEND_ORIGIN` avec l'origine exacte du frontend, et `AUTO_SEED_ON_START=false`.
+- Frontend : definir obligatoirement `EXPO_PUBLIC_API_BASE_URL=https://votre-api.example.com/api`.
+- Verification build : `npm run verify`.
+- Test API reel apres demarrage backend : `npm run verify:smoke`.
 -------|--------------|------|
 | admin@bank.local | Admin@1234 | admin |
 | client1@bank.local | Client@1234 | client |

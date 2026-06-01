@@ -86,6 +86,31 @@ async function verifyEmailOtpPublic(req, res) {
   return res.json({ message: 'Email verifie', emailVerified: true });
 }
 
+async function resetPasswordPublic(req, res) {
+  const email = typeof req.body?.email === 'string' ? req.body.email.trim().toLowerCase() : '';
+  const code = req.body?.code;
+  const newPassword = typeof req.body?.newPassword === 'string' ? req.body.newPassword : '';
+  if (!email || !code || !newPassword) {
+    return res.status(400).json({ message: 'email, code et newPassword sont requis' });
+  }
+  if (newPassword.length < 8) {
+    return res.status(400).json({ message: 'Le mot de passe doit contenir au moins 8 caracteres' });
+  }
+
+  const user = await User.findOne({ where: { email } });
+  if (!user) {
+    return res.status(404).json({ message: 'Email introuvable' });
+  }
+
+  if (!isOtpValid(user, code)) {
+    return res.status(400).json({ message: 'Code OTP invalide ou expire' });
+  }
+
+  const passwordHash = await bcrypt.hash(newPassword, 10);
+  await user.update({ passwordHash, emailVerified: true, otpCode: null, otpExpiresAt: null });
+  return res.json({ message: 'Mot de passe reinitialise' });
+}
+
 async function changePassword(req, res) {
   const { currentPassword, newPassword } = req.body;
   if (!currentPassword || !newPassword) {
@@ -125,6 +150,7 @@ module.exports = {
   requestEmailOtpPublic,
   verifyEmailOtp,
   verifyEmailOtpPublic,
+  resetPasswordPublic,
   changePassword,
   listLoginHistory,
 };

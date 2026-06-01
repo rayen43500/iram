@@ -39,10 +39,16 @@ const platformFallback = Platform.select({
 });
 
 /** Ordre : .env (Expo) → IP déduite du bundler (téléphone physique) → émulateur / simulateur */
+const configuredApiBaseUrl = process.env.EXPO_PUBLIC_API_BASE_URL;
+
 export const API_BASE_URL =
-  process.env.EXPO_PUBLIC_API_BASE_URL ||
+  configuredApiBaseUrl ||
   DEV_INFERRED_API ||
-  platformFallback;
+  (__DEV__ ? platformFallback : '');
+
+if (!API_BASE_URL) {
+  throw new Error('EXPO_PUBLIC_API_BASE_URL est requis pour un build production.');
+}
 
 async function apiRequest(path, options = {}, token) {
   const controller = new AbortController();

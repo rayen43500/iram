@@ -28,6 +28,75 @@ async function listAllRequests(req, res) {
   return res.json(items);
 }
 
+async function listUsers(req, res) {
+  const { q, role } = req.query;
+  const where = {};
+  if (role && ['client', 'admin'].includes(role)) {
+    where.role = role;
+  }
+  if (q) {
+    where[Op.or] = [
+      { fullName: { [Op.like]: `%${q}%` } },
+      { email: { [Op.like]: `%${q}%` } },
+      { accountNumber: { [Op.like]: `%${q}%` } },
+      { cin: { [Op.like]: `%${q}%` } },
+    ];
+  }
+
+  const items = await User.findAll({
+    where,
+    order: [['createdAt', 'DESC']],
+    attributes: [
+      'id',
+      'accountNumber',
+      'cin',
+      'firstName',
+      'lastName',
+      'fullName',
+      'email',
+      'role',
+      'salary',
+      'balance',
+      'emailVerified',
+      'lastLoginAt',
+      'createdAt',
+    ],
+  });
+  return res.json(items);
+}
+
+async function updateUserRole(req, res) {
+  const { role } = req.body;
+  if (!['client', 'admin'].includes(role)) {
+    return res.status(400).json({ message: 'Role invalide' });
+  }
+
+  const user = await User.findByPk(req.params.id);
+  if (!user) {
+    return res.status(404).json({ message: 'Utilisateur introuvable' });
+  }
+  if (Number(user.id) === Number(req.user.id) && role !== 'admin') {
+    return res.status(400).json({ message: 'Vous ne pouvez pas retirer votre propre role admin' });
+  }
+
+  await user.update({ role });
+  return res.json({
+    id: user.id,
+    accountNumber: user.accountNumber,
+    cin: user.cin,
+    firstName: user.firstName,
+    lastName: user.lastName,
+    fullName: user.fullName,
+    email: user.email,
+    role: user.role,
+    salary: user.salary,
+    balance: user.balance,
+    emailVerified: user.emailVerified,
+    lastLoginAt: user.lastLoginAt,
+    createdAt: user.createdAt,
+  });
+}
+
 async function updateRequestStatus(req, res) {
   const { status, adminComment = '' } = req.body;
   if (!['pending', 'accepted', 'rejected'].includes(status)) {
@@ -146,6 +215,8 @@ async function updateCreditType(req, res) {
 
 module.exports = {
   listAllRequests,
+  listUsers,
+  updateUserRole,
   updateRequestStatus,
   createCreditType,
   analyticsSummary,

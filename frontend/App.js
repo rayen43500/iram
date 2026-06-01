@@ -83,6 +83,7 @@ async function storageDeleteItem(key) {
 const ADMIN_NAV = [
   { key: 'overview', label: 'Synthèse', icon: LayoutDashboard },
   { key: 'requests', label: 'Demandes', icon: ClipboardList },
+  { key: 'users', label: 'Utilisateurs', icon: Users },
   { key: 'products', label: 'Offres crédit', icon: CreditCard },
   { key: 'profile', label: 'Profil', icon: CircleUser },
 ];
@@ -127,6 +128,7 @@ export default function App() {
   const [creditTypes, setCreditTypes] = useState([]);
   const [adminSummary, setAdminSummary] = useState(null);
   const [adminRequests, setAdminRequests] = useState([]);
+  const [adminUsers, setAdminUsers] = useState([]);
   const [selectedCreditTypeId, setSelectedCreditTypeId] = useState('');
   const [amount, setAmount] = useState('10000');
   const [durationMonths, setDurationMonths] = useState('36');
@@ -143,6 +145,8 @@ export default function App() {
   const [adminStatusFilter, setAdminStatusFilter] = useState('all');
   const [adminDateFrom, setAdminDateFrom] = useState('');
   const [adminDateTo, setAdminDateTo] = useState('');
+  const [adminUserSearchQuery, setAdminUserSearchQuery] = useState('');
+  const [adminUserRoleFilter, setAdminUserRoleFilter] = useState('all');
   const [adminSelectedRequest, setAdminSelectedRequest] = useState(null);
   const [adminRejectionReason, setAdminRejectionReason] = useState('');
   const [creditSearchQuery, setCreditSearchQuery] = useState('');
@@ -323,6 +327,7 @@ export default function App() {
         const summary = await apiRequest('/admin/analytics/summary', {}, authToken);
         setAdminSummary(summary);
         await loadAdminRequests(authToken);
+        await loadAdminUsers(authToken);
       }
       return me;
     } catch (e) { setError(e.message || 'Erreur de chargement.'); }
@@ -354,6 +359,20 @@ export default function App() {
       setAdminRequests(reqs);
     } catch (e) {
       setError(e.message || 'Chargement demandes admin impossible.');
+    }
+  }
+
+  async function loadAdminUsers(authToken = token) {
+    if (!authToken) return;
+    try {
+      const params = new URLSearchParams();
+      if (adminUserRoleFilter !== 'all') params.set('role', adminUserRoleFilter);
+      if (adminUserSearchQuery.trim()) params.set('q', adminUserSearchQuery.trim());
+      const qs = params.toString();
+      const users = await apiRequest(`/admin/users${qs ? `?${qs}` : ''}`, {}, authToken);
+      setAdminUsers(users || []);
+    } catch (e) {
+      setError(e.message || 'Chargement utilisateurs admin impossible.');
     }
   }
 
@@ -483,17 +502,83 @@ export default function App() {
     } catch (err) { setError(err.message || 'Connexion impossible.'); } finally { setIsAuthBusy(false); }
   }
 
+  async function onRequestAuthOtp() {
+    const e = email.trim().toLowerCase();
+    if (!e) { setError('Email obligatoire pour envoyer le code OTP.'); return; }
+    try {
+      setError(''); setNotice(''); setAuthOtpStatus(''); setIsAuthBusy(true);
+      const res = await apiRequest('/auth/request-otp-public', {
+        method: 'POST',
+        body: JSON.stringify({ email: e }),
+      });
+      setAuthOtpStatus(res.message || 'OTP envoye.');
+      setNotice('Code OTP envoye par email.');
+    } catch (err) {
+      setError(err.message || 'Envoi OTP impossible.');
+    } finally {
+      setIsAuthBusy(false);
+    }
+  }
+
+  async function onVerifyAuthOtp() {
+    const e = email.trim().toLowerCase();
+    const code = authOtpCode.trim();
+    if (!e) { setError('Email obligatoire pour verifier le code OTP.'); return; }
+    if (!code) { setError('Saisissez le code OTP.'); return; }
+    try {
+      setError(''); setNotice(''); setAuthOtpStatus(''); setIsAuthBusy(true);
+      const res = await apiRequest('/auth/verify-otp-public', {
+        method: 'POST',
+        body: JSON.stringify({ email: e, code }),
+      });
+      setAuthOtpStatus(res.message || 'Email verifie.');
+      setNotice('Email verifie avec succes.');
+      setAuthOtpCode('');
+      setUser((prev) => (prev ? { ...prev, emailVerified: true } : prev));
+    } catch (err) {
+      setError(err.message || 'Verification OTP impossible.');
+    } finally {
+      setIsAuthBusy(false);
+    }
+  }
+
+  async function onResetForgotPassword() {
+    const e = email.trim().toLowerCase();
+    const code = authOtpCode.trim();
+    if (!e) { setError('Email obligatoire.'); return; }
+    if (!code) { setError('Saisissez le code OTP.'); return; }
+    if (!password || !confirmPasswordAuth) { setError('Nouveau mot de passe et confirmation obligatoires.'); return; }
+    if (password !== confirmPasswordAuth) { setError('Les mots de passe ne correspondent pas.'); return; }
+    try {
+      setError(''); setNotice(''); setAuthOtpStatus(''); setIsAuthBusy(true);
+      const res = await apiRequest('/auth/reset-password-public', {
+        method: 'POST',
+        body: JSON.stringify({ email: e, code, newPassword: password }),
+      });
+      setAuthOtpStatus(res.message || 'Mot de passe reinitialise.');
+      setNotice('Mot de passe reinitialise. Vous pouvez vous connecter.');
+      setPassword('');
+      setConfirmPasswordAuth('');
+      setAuthOtpCode('');
+      setAuthMode('login');
+    } catch (err) {
+      setError(err.message || 'Reinitialisation impossible.');
+    } finally {
+      setIsAuthBusy(false);
+    }
+  }
+
   function onLogout() {
     if (idleTimerRef.current) {
       clearTimeout(idleTimerRef.current);
       idleTimerRef.current = null;
     }
     setToken(''); setUser(null); setView('dashboard'); setDashboard(null); setCreditTypes([]);
-    setSelectedCreditTypeId(''); setEstimationResult(null); setChatMessages([]); setAdminSummary(null); setAdminRequests([]); setNotice(''); setError('');
+    setSelectedCreditTypeId(''); setEstimationResult(null); setChatMessages([]); setAdminSummary(null); setAdminRequests([]); setAdminUsers([]); setNotice(''); setError('');
     setCreditsSubView('categories'); setSelectedCategory(null); setSelectedCredit(null); setCreditStartTab('active');
     setReqPhone(''); setReqCity(''); setReqProfession(''); setReqProjectPurpose('');
     setReqOtherIncome(''); setReqNotes(''); setReqDeclareAccurate(false);
-    setAdminPage('overview'); setAdminSidebarOpen(false); setProfileAvatarDraft(null); setProfileAvatarUrlInput('');
+    setAdminPage('overview'); setAdminSidebarOpen(false); setAdminUserSearchQuery(''); setAdminUserRoleFilter('all'); setProfileAvatarDraft(null); setProfileAvatarUrlInput('');
     setStoredToken(''); setSavedSimulations([]); setNotifications([]); setUnreadCount(0); setLoginHistory([]); setDocuments([]);
     setCurrentPassword(''); setNewPassword(''); setConfirmPassword(''); setConfirmPasswordAuth(''); setOtpCode(''); setOtpStatus(''); setAuthOtpCode(''); setAuthOtpStatus('');
     setDocDraft(null); setCompareLeftId(''); setCompareRightId(''); setShowSchedule(false);
@@ -1104,6 +1189,19 @@ export default function App() {
     } catch (e) { setError(e.message || 'Mise à jour impossible.'); } finally { setIsActionBusy(false); }
   }
 
+  async function onUpdateUserRole(id, role) {
+    try {
+      setError(''); setNotice(''); setIsActionBusy(true);
+      await apiRequest(`/admin/users/${id}/role`, { method: 'PATCH', body: JSON.stringify({ role }) }, token);
+      await loadAdminUsers();
+      setNotice('Role utilisateur mis a jour.');
+    } catch (e) {
+      setError(e.message || 'Mise a jour du role impossible.');
+    } finally {
+      setIsActionBusy(false);
+    }
+  }
+
   const tabsClient = [
     { key: 'dashboard', label: t('tab.dashboard'), icon: Home },
     { key: 'credits', label: t('tab.credits'), icon: CreditCard },
@@ -1175,7 +1273,7 @@ export default function App() {
                   value={password}
                   onChangeText={setPassword}
                   secureTextEntry={!passwordVisible}
-                  placeholder={t('auth.password')}
+                  placeholder={authMode === 'forgot' ? 'Nouveau mot de passe' : t('auth.password')}
                   placeholderTextColor={COLORS.textLight}
                   autoCapitalize="none"
                   autoCorrect={false}
@@ -1194,14 +1292,19 @@ export default function App() {
                   {passwordVisible ? <EyeOff size={22} color={COLORS.primary} strokeWidth={2} /> : <Eye size={22} color={COLORS.textSecondary} strokeWidth={2} />}
                 </Pressable>
               </View>
-              {authMode === 'register' && (
+              {authMode === 'login' && (
+                <Pressable onPress={() => { setAuthMode('forgot'); setAuthOtpStatus(''); setError(''); setNotice(''); }}>
+                  <Text style={[s.formMeta, { textAlign: 'right' }]}>Mot de passe oublie ?</Text>
+                </Pressable>
+              )}
+              {(authMode === 'register' || authMode === 'forgot') && (
                 <View style={s.passwordField}>
                   <TextInput
                     style={s.passwordInput}
                     value={confirmPasswordAuth}
                     onChangeText={setConfirmPasswordAuth}
                     secureTextEntry={!confirmPasswordVisible}
-                    placeholder={t('auth.confirmPassword')}
+                    placeholder={authMode === 'forgot' ? 'Confirmer le nouveau mot de passe' : t('auth.confirmPassword')}
                     placeholderTextColor={COLORS.textLight}
                     autoCapitalize="none"
                     autoCorrect={false}
@@ -1222,14 +1325,27 @@ export default function App() {
                 </View>
               )}
 
-              <PrimaryButton label={authMode === 'login' ? t('auth.loginBtn') : t('auth.registerBtn')} onPress={authMode === 'login' ? onLogin : onRegister} disabled={isAuthBusy} loading={isAuthBusy} colors={COLORS} />
+              <PrimaryButton
+                label={authMode === 'login' ? t('auth.loginBtn') : authMode === 'forgot' ? 'Reinitialiser le mot de passe' : t('auth.registerBtn')}
+                onPress={authMode === 'login' ? onLogin : authMode === 'forgot' ? onResetForgotPassword : onRegister}
+                disabled={isAuthBusy}
+                loading={isAuthBusy}
+                colors={COLORS}
+              />
 
-              <View style={s.otpRow}>
-                <SecondaryButton label={t('auth.sendOtp')} onPress={onRequestAuthOtp} disabled={isAuthBusy} colors={COLORS} />
-                <TextInput style={[s.input, s.otpInput]} value={authOtpCode} onChangeText={setAuthOtpCode} placeholder={t('auth.otpPlaceholder')} placeholderTextColor={COLORS.textLight} keyboardType="numeric" />
-                <PrimaryButton label={t('auth.verifyEmail')} onPress={onVerifyAuthOtp} disabled={isAuthBusy} colors={COLORS} />
-              </View>
-              {authOtpStatus ? <Text style={s.formHint}>{authOtpStatus}</Text> : null}
+              {(authMode === 'register' || authMode === 'forgot') && (
+                <>
+                  <View style={s.otpRow}>
+                    <SecondaryButton label={t('auth.sendOtp')} onPress={onRequestAuthOtp} disabled={isAuthBusy} colors={COLORS} />
+                    <TextInput style={[s.input, s.otpInput]} value={authOtpCode} onChangeText={setAuthOtpCode} placeholder={t('auth.otpPlaceholder')} placeholderTextColor={COLORS.textLight} keyboardType="numeric" />
+                    {authMode === 'register' ? <PrimaryButton label={t('auth.verifyEmail')} onPress={onVerifyAuthOtp} disabled={isAuthBusy} colors={COLORS} /> : null}
+                  </View>
+                  {authOtpStatus ? <Text style={s.formHint}>{authOtpStatus}</Text> : null}
+                </>
+              )}
+              {authMode === 'forgot' ? (
+                <SecondaryButton label="Retour connexion" onPress={() => { setAuthMode('login'); setAuthOtpCode(''); setAuthOtpStatus(''); setError(''); }} disabled={isAuthBusy} colors={COLORS} />
+              ) : null}
 
               {storedToken && biometricEnabled ? (
                 <SecondaryButton
@@ -2078,6 +2194,76 @@ export default function App() {
           </SectionCard>
         )}
 
+        {isAdmin && view === 'admin' && adminPage === 'users' && (
+          <SectionCard {...themed}>
+            <SectionTitle {...themed}>Gestion utilisateurs</SectionTitle>
+
+            <View style={{ marginBottom: 16 }}>
+              <View style={[s.input, { flexDirection: 'row', alignItems: 'center', marginBottom: 12 }]}>
+                <Search size={20} color={COLORS.textLight} />
+                <TextInput
+                  style={{ flex: 1, marginLeft: 8, color: COLORS.text }}
+                  placeholder="Nom, email, compte ou CIN..."
+                  placeholderTextColor={COLORS.textLight}
+                  value={adminUserSearchQuery}
+                  onChangeText={setAdminUserSearchQuery}
+                />
+              </View>
+              <View style={{ flexDirection: 'row', gap: 8, flexWrap: 'wrap', marginBottom: 12 }}>
+                {['all', 'client', 'admin'].map((role) => (
+                  <TouchableOpacity
+                    key={role}
+                    style={[s.filterChip, adminUserRoleFilter === role && s.filterChipActive]}
+                    onPress={() => setAdminUserRoleFilter(role)}
+                  >
+                    <Text style={[s.filterChipText, adminUserRoleFilter === role && s.filterChipTextActive]}>
+                      {role === 'all' ? 'Tous' : role === 'admin' ? 'Admins' : 'Clients'}
+                    </Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
+              <PrimaryButton label="Appliquer les filtres" onPress={() => loadAdminUsers()} disabled={isLoadingData} {...themed} />
+            </View>
+
+            {adminUsers.length === 0 ? (
+              <EmptyState icon="👥" title="Aucun utilisateur" description="Aucun utilisateur ne correspond aux criteres." {...themed} />
+            ) : adminUsers.map((item) => {
+              const nextRole = item.role === 'admin' ? 'client' : 'admin';
+              const isSelf = Number(item.id) === Number(user?.id);
+              return (
+                <View style={s.listItem} key={item.id}>
+                  <View style={s.listItemHead}>
+                    <View style={{ flex: 1 }}>
+                      <Text style={s.listItemTitle}>{item.fullName || 'Utilisateur'}</Text>
+                      <Text style={s.listItemSub}>{item.email}</Text>
+                    </View>
+                    <View style={[s.roleBadge, item.role === 'admin' ? s.roleBadgeAdmin : s.roleBadgeClient]}>
+                      <Text style={[s.roleBadgeText, item.role === 'admin' ? s.roleBadgeTextAdmin : s.roleBadgeTextClient]}>
+                        {item.role === 'admin' ? 'Admin' : 'Client'}
+                      </Text>
+                    </View>
+                  </View>
+                  <Text style={s.listItemSub}>
+                    Compte: {item.accountNumber || '-'} • CIN: {item.cin || '-'} • Email {item.emailVerified ? 'verifie' : 'non verifie'}
+                  </Text>
+                  <Text style={s.listItemSub}>
+                    Solde: {formatMoney(item.balance)} • Salaire: {formatMoney(item.salary)}
+                  </Text>
+                  <View style={s.adminActions}>
+                    <TouchableOpacity
+                      style={[s.adminBtn, { backgroundColor: isSelf && nextRole === 'client' ? COLORS.textLight : COLORS.primary }]}
+                      onPress={() => onUpdateUserRole(item.id, nextRole)}
+                      disabled={isActionBusy || (isSelf && nextRole === 'client')}
+                    >
+                      <Text style={s.adminBtnText}>{nextRole === 'admin' ? 'Promouvoir admin' : 'Passer client'}</Text>
+                    </TouchableOpacity>
+                  </View>
+                </View>
+              );
+            })}
+          </SectionCard>
+        )}
+
         {isAdmin && view === 'admin' && adminPage === 'products' && (
           <SectionCard {...themed}>
             <SectionTitle {...themed}>Offres de crédit</SectionTitle>
@@ -2594,6 +2780,12 @@ function createStyles(COLORS) {
   adminActions: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 8 },
   adminBtn: { borderRadius: RADIUS.sm, paddingVertical: 8, paddingHorizontal: 12 },
   adminBtnText: { color: COLORS.white, fontFamily: FONTS.bold, fontSize: 12 },
+  roleBadge: { borderRadius: RADIUS.full, paddingHorizontal: 10, paddingVertical: 5 },
+  roleBadgeAdmin: { backgroundColor: COLORS.primary + '12' },
+  roleBadgeClient: { backgroundColor: COLORS.successBg },
+  roleBadgeText: { fontFamily: FONTS.bold, fontSize: 11 },
+  roleBadgeTextAdmin: { color: COLORS.primary },
+  roleBadgeTextClient: { color: COLORS.success },
   modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'center', alignItems: 'center' },
   modalContent: { backgroundColor: COLORS.white, width: '90%', maxWidth: 500, borderRadius: RADIUS.xl, overflow: 'hidden' },
   modalContentCompact: { width: '96%' },

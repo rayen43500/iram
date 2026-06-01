@@ -8,7 +8,7 @@
     "android": "expo start --android",
     "ios": "expo start --ios",
     "web": "expo start --web",
-    "verify": "npx expo export --platform web --output-dir .expo-verify && node -e \"require('fs').rmSync('.expo-verify',{recursive:true,force:true})\""
+    "verify": "node scripts/verify-web.js"
   },
   "dependencies": {
     "@expo-google-fonts/inter": "^0.4.2",
