@@ -7,7 +7,7 @@ const { parseApplicationForm } = require('../utils/applicationForm');
 const { createUserNotification, createRoleNotification } = require('../utils/notificationService');
 
 async function createRequest(req, res) {
-  const { creditTypeId, requestedAmount, requestedDurationMonths } = req.body;
+  const { creditTypeId, requestedAmount, requestedDurationMonths, salary: bodySalary } = req.body;
   if (!creditTypeId || !requestedAmount || !requestedDurationMonths) {
     return res.status(400).json({ message: 'creditTypeId, requestedAmount et requestedDurationMonths sont requis' });
   }
@@ -60,11 +60,16 @@ async function createRequest(req, res) {
   const currentLoans = await Loan.findAll({ where: { userId: req.user.id, status: 'active' } });
   const existingMonthlyDebt = currentLoans.reduce((sum, loan) => sum + loan.monthlyPayment, 0);
 
+  const salaryForRequest = Number(bodySalary ?? formResult.data.simulationSalary ?? req.user.salary ?? 0);
+  if (!Number.isFinite(salaryForRequest) || salaryForRequest <= 0) {
+    return res.status(400).json({ message: 'Salaire mensuel invalide pour le calcul du dossier.' });
+  }
+
   const estimation = buildEstimation({
     amount: normalizedAmount,
     annualRate: creditType.annualRate,
     durationMonths: normalizedDuration,
-    salary: Number(req.user.salary || 0),
+    salary: salaryForRequest,
     extraMonthlyIncome: formResult.data.monthlyOtherIncome || 0,
     existingMonthlyDebt,
     maxDebtRatio: env.scoringMaxDebtRatio,
@@ -75,7 +80,7 @@ async function createRequest(req, res) {
     creditTypeId: creditType.id,
     requestedAmount: normalizedAmount,
     requestedDurationMonths: normalizedDuration,
-    salaryAtRequest: Number(req.user.salary || 0),
+    salaryAtRequest: salaryForRequest,
     estimatedMonthlyPayment: estimation.monthlyPayment,
     estimatedTotalCost: estimation.totalCost,
     debtRatio: estimation.debtRatio,

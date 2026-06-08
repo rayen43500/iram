@@ -144,6 +144,7 @@ async function ensureUserSecurityColumns() {
   await ensureColumn('users', 'phone', 'ALTER TABLE `users` ADD COLUMN `phone` VARCHAR(64) NULL');
   await ensureColumn('users', 'city', 'ALTER TABLE `users` ADD COLUMN `city` VARCHAR(140) NULL');
   await ensureColumn('users', 'profession', 'ALTER TABLE `users` ADD COLUMN `profession` VARCHAR(140) NULL');
+  await ensureColumn('users', 'accountType', "ALTER TABLE `users` ADD COLUMN `accountType` VARCHAR(40) NOT NULL DEFAULT 'particulier'");
   await ensureColumn('users', 'lastLoginAt', 'ALTER TABLE `users` ADD COLUMN `lastLoginAt` DATETIME NULL');
 }
 

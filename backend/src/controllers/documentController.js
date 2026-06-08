@@ -14,18 +14,23 @@ async function listDocuments(req, res) {
   return res.json(items);
 }
 
+const ALLOWED_DOC_TYPES = ['cin', 'payslip', 'selfie', 'other'];
+
 async function uploadDocument(req, res) {
   const { type = 'other', fileName, mimeType, dataUrl } = req.body;
   if (!fileName || !mimeType || !dataUrl) {
     return res.status(400).json({ message: 'fileName, mimeType et dataUrl sont requis' });
   }
+  if (!ALLOWED_DOC_TYPES.includes(String(type))) {
+    return res.status(400).json({ message: 'Type de document invalide (cin, payslip, selfie, other).' });
+  }
   if (!isDataUrlSafe(dataUrl)) {
-    return res.status(400).json({ message: 'Document invalide ou trop volumineux' });
+    return res.status(400).json({ message: 'Document invalide ou trop volumineux (max ~900 Ko encodé).' });
   }
 
   const created = await UserDocument.create({
     userId: req.user.id,
-    type,
+    type: String(type),
     fileName: String(fileName).slice(0, 255),
     mimeType: String(mimeType).slice(0, 120),
     dataUrl,

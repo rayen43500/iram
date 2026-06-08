@@ -7,7 +7,7 @@ import {
 import { SafeAreaProvider, SafeAreaView } from 'react-native-safe-area-context';
 import { Inter_400Regular, Inter_500Medium, Inter_600SemiBold, Inter_700Bold, Inter_800ExtraBold, useFonts } from '@expo-google-fonts/inter';
 import { LinearGradient } from 'expo-linear-gradient';
-import { Home, CreditCard, Calculator, MessageCircle, ShieldCheck, Wallet, Banknote, LogOut, RefreshCw, User, Send, ChevronRight, TrendingUp, Clock, CheckCircle2, XCircle, BarChart3, Users, FileText, Search, Filter, Eye, EyeOff, Menu, LayoutDashboard, ClipboardList, CircleUser, X as XIcon, Bell, Fingerprint, Moon, Sun, Camera, Upload, FileDown, QrCode, Globe, Lock, Car, Calendar, DollarSign, Check, ChevronLeft, Percent } from 'lucide-react-native';
+import { Home, CreditCard, Calculator, MessageCircle, ShieldCheck, Wallet, Banknote, LogOut, RefreshCw, User, Send, ChevronRight, TrendingUp, Clock, CheckCircle2, XCircle, BarChart3, Users, FileText, Search, Filter, Eye, EyeOff, Menu, LayoutDashboard, ClipboardList, CircleUser, X as XIcon, Bell, Fingerprint, Moon, Sun, Camera, Upload, FileDown, QrCode, Globe, Lock, Car, Calendar, DollarSign, Check, ChevronLeft, Percent, IdCard, File, Trash2 } from 'lucide-react-native';
 import { PieChart, BarChart } from 'react-native-chart-kit';
 import * as LocalAuthentication from 'expo-local-authentication';
 import * as SecureStore from 'expo-secure-store';
@@ -21,13 +21,74 @@ import QRCode from 'react-native-qrcode-svg';
 import { useTranslation } from 'react-i18next';
 import './src/i18n';
 import { apiRequest } from './src/api';
-import { DARK_COLORS, LIGHT_COLORS, FONTS, RADIUS, SHADOW, SPACING } from './src/theme';
+import { DARK_COLORS, LIGHT_COLORS, FONTS, RADIUS, SPACING, TYPO, createShadows } from './src/theme';
 import { StatusBadge, EmptyState, BottomTabBar, KpiCard, SectionCard, SectionTitle, PrimaryButton, SecondaryButton, InputLabel, ChatBubble } from './src/components';
+import AtbCreditApplicationForm from './src/AtbCreditApplicationForm';
+import { createInitialAtbForm, validateAtbForm, atbFormToPayload, inferCreditCategory, professionalStatusLabel } from './src/atbCreditForm';
 
 const ATB_LOGO = require('./assets/image.png');
 
+const MAX_DOC_DATA_URL = 900000;
+const DOC_TYPES = [
+  { id: 'cin', label: 'CIN', hint: "Carte d'identité nationale", Icon: IdCard },
+  { id: 'payslip', label: 'Fiche de paie', hint: 'Justificatif de revenus', Icon: FileText },
+  { id: 'selfie', label: 'Selfie', hint: 'Photo de vérification', Icon: Camera },
+  { id: 'other', label: 'Autre', hint: 'Document complémentaire', Icon: File },
+];
+
 function formatMoney(v) { return `${Number(v || 0).toLocaleString('fr-FR', { maximumFractionDigits: 2 })} TND`; }
 function formatPercent(v) { const n = Number(v || 0) * (v <= 1 ? 100 : 1); return `${n.toFixed(1)}%`; }
+
+function docTypeMeta(type) {
+  return DOC_TYPES.find((d) => d.id === type) || DOC_TYPES[3];
+}
+
+function isImageMime(mime = '') {
+  return String(mime).startsWith('image/');
+}
+
+async function compressImageDataUrl(dataUrl, maxLen = MAX_DOC_DATA_URL - 5000) {
+  if (!dataUrl || dataUrl.length <= maxLen) return dataUrl;
+  if (Platform.OS !== 'web' || typeof document === 'undefined') return dataUrl;
+  return new Promise((resolve) => {
+    const img = new window.Image();
+    img.onload = () => {
+      const canvas = document.createElement('canvas');
+      let w = img.width;
+      let h = img.height;
+      const scale = Math.min(1, 1400 / Math.max(w, h));
+      w = Math.round(w * scale);
+      h = Math.round(h * scale);
+      canvas.width = w;
+      canvas.height = h;
+      const ctx = canvas.getContext('2d');
+      if (!ctx) { resolve(dataUrl); return; }
+      ctx.drawImage(img, 0, 0, w, h);
+      let quality = 0.85;
+      let out = canvas.toDataURL('image/jpeg', quality);
+      while (out.length > maxLen && quality > 0.35) {
+        quality -= 0.08;
+        out = canvas.toDataURL('image/jpeg', quality);
+      }
+      resolve(out);
+    };
+    img.onerror = () => resolve(dataUrl);
+    img.src = dataUrl;
+  });
+}
+
+function applyDocDraft(dataUrl, fileName, mimeType, setError, setDocDraft) {
+  if (!dataUrl || dataUrl.length > MAX_DOC_DATA_URL) {
+    setError('Document trop volumineux (réduisez la taille ou choisissez une autre image).');
+    return;
+  }
+  setDocDraft({
+    dataUrl,
+    fileName: String(fileName || `document-${Date.now()}.jpg`).slice(0, 255),
+    mimeType: String(mimeType || 'image/jpeg').slice(0, 120),
+  });
+  setError('');
+}
 
 function getCreditIcon(slug, size = 20, color = '#A6192E') {
   const s = String(slug || '').toLowerCase();
@@ -88,16 +149,6 @@ const ADMIN_NAV = [
   { key: 'profile', label: 'Profil', icon: CircleUser },
 ];
 
-const PRO_CREDIT_CATALOG = [
-  { name: 'Crédit Sayara', target: 'Financement véhicule neuf ou d’occasion', speed: '24h' },
-  { name: 'Crédit Sakan', target: 'Logement principal ou résidence secondaire', speed: '72h' },
-  { name: 'Crédit Mounassib', target: 'Besoin personnel à mensualité équilibrée', speed: '48h' },
-  { name: 'Crédit Tahawel', target: 'Transfert et rachat de crédits', speed: '48h' },
-  { name: 'Crédit Renov', target: 'Travaux et rénovation de l’habitat', speed: '48h' },
-  { name: 'Crédit START', target: 'Lancement ou développement d’activité', speed: '72h' },
-  { name: 'Crédit Bien être', target: 'Santé, études et confort familial', speed: '24h' },
-];
-
 export default function App() {
   const { width, height } = useWindowDimensions();
   const { t, i18n } = useTranslation();
@@ -120,8 +171,8 @@ export default function App() {
   const [cin, setCin] = useState('');
   const [lastName, setLastName] = useState('');
   const [firstName, setFirstName] = useState('');
-  const [email, setEmail] = useState('admin@bank.local');
-  const [password, setPassword] = useState('Admin@1234');
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
   const [confirmPasswordAuth, setConfirmPasswordAuth] = useState('');
   const [salary, setSalary] = useState('2500');
   const [dashboard, setDashboard] = useState(null);
@@ -138,6 +189,8 @@ export default function App() {
   const [isLoadingData, setIsLoadingData] = useState(false);
   const [isAuthBusy, setIsAuthBusy] = useState(false);
   const [isActionBusy, setIsActionBusy] = useState(false);
+  const [isEstimating, setIsEstimating] = useState(false);
+  const [isUploadingDoc, setIsUploadingDoc] = useState(false);
   const [editingCreditTypeId, setEditingCreditTypeId] = useState(null);
   const [editingRate, setEditingRate] = useState('');
   const [editingIsActive, setEditingIsActive] = useState(true);
@@ -148,6 +201,8 @@ export default function App() {
   const [adminUserSearchQuery, setAdminUserSearchQuery] = useState('');
   const [adminUserRoleFilter, setAdminUserRoleFilter] = useState('all');
   const [adminSelectedRequest, setAdminSelectedRequest] = useState(null);
+  const [adminRequestDocuments, setAdminRequestDocuments] = useState([]);
+  const [adminDocsLoading, setAdminDocsLoading] = useState(false);
   const [adminRejectionReason, setAdminRejectionReason] = useState('');
   const [creditSearchQuery, setCreditSearchQuery] = useState('');
   const [creditOnlyActive, setCreditOnlyActive] = useState(false);
@@ -164,13 +219,7 @@ export default function App() {
   const [otpStatus, setOtpStatus] = useState('');
   const [authOtpCode, setAuthOtpCode] = useState('');
   const [authOtpStatus, setAuthOtpStatus] = useState('');
-  const [reqPhone, setReqPhone] = useState('');
-  const [reqCity, setReqCity] = useState('');
-  const [reqProfession, setReqProfession] = useState('');
-  const [reqProjectPurpose, setReqProjectPurpose] = useState('');
-  const [reqOtherIncome, setReqOtherIncome] = useState('');
-  const [reqNotes, setReqNotes] = useState('');
-  const [reqDeclareAccurate, setReqDeclareAccurate] = useState(false);
+  const [atbForm, setAtbForm] = useState(() => createInitialAtbForm(null));
   const [adminPage, setAdminPage] = useState('overview');
   const [adminSidebarOpen, setAdminSidebarOpen] = useState(false);
   const [profileEditName, setProfileEditName] = useState('');
@@ -179,6 +228,7 @@ export default function App() {
   const [profilePhone, setProfilePhone] = useState('');
   const [profileCity, setProfileCity] = useState('');
   const [profileProfession, setProfileProfession] = useState('');
+  const [profileAccountType, setProfileAccountType] = useState('particulier');
   const [savedSimulations, setSavedSimulations] = useState([]);
   const [compareLeftId, setCompareLeftId] = useState('');
   const [compareRightId, setCompareRightId] = useState('');
@@ -205,11 +255,6 @@ export default function App() {
     const matchState = !creditOnlyActive || Boolean(t.isActive);
     return matchQuery && matchState;
   }), [creditOnlyActive, creditSearchQuery, creditTypes]);
-  const topRecommendedTypes = useMemo(() => [...creditTypes]
-    .filter((t) => t.isActive)
-    .sort((a, b) => Number(a.annualRate) - Number(b.annualRate))
-    .slice(0, 3), [creditTypes]);
-
   async function initAppSettings() {
     try {
       const [savedToken, storedBio, storedDark, storedLang] = await Promise.all([
@@ -302,7 +347,48 @@ export default function App() {
     setProfilePhone(typeof user?.phone === 'string' ? user.phone : '');
     setProfileCity(typeof user?.city === 'string' ? user.city : '');
     setProfileProfession(typeof user?.profession === 'string' ? user.profession : '');
-  }, [user?.id, user?.phone, user?.city, user?.profession]);
+    setProfileAccountType(typeof user?.accountType === 'string' ? user.accountType : 'particulier');
+  }, [user?.id, user?.phone, user?.city, user?.profession, user?.accountType]);
+
+  useEffect(() => {
+    if (user?.id) setAtbForm(createInitialAtbForm(user));
+  }, [user?.id, user?.phone, user?.city, user?.cin, user?.profession, user?.accountType]);
+
+  useEffect(() => {
+    if (selectedType?.name) {
+      setAtbForm((prev) => ({ ...prev, creditCategory: inferCreditCategory(selectedType.name) }));
+    }
+  }, [selectedType?.id, selectedType?.name]);
+
+  useEffect(() => {
+    const sal = dashboard?.client?.salary ?? user?.salary;
+    if (sal != null && Number(sal) > 0) setSalary(String(sal));
+  }, [user?.id, user?.salary, dashboard?.client?.salary]);
+
+  useEffect(() => {
+    if (!isAdmin || !token || !adminSelectedRequest?.userId) {
+      setAdminRequestDocuments([]);
+      return undefined;
+    }
+    let cancelled = false;
+    (async () => {
+      try {
+        setAdminDocsLoading(true);
+        const docs = await apiRequest(`/admin/users/${adminSelectedRequest.userId}/documents`, {}, token);
+        if (cancelled) return;
+        const ids = adminSelectedRequest.applicationForm?.attachedDocumentIds;
+        const list = Array.isArray(ids) && ids.length
+          ? docs.filter((d) => ids.includes(d.id))
+          : docs;
+        setAdminRequestDocuments(list);
+      } catch {
+        if (!cancelled) setAdminRequestDocuments([]);
+      } finally {
+        if (!cancelled) setAdminDocsLoading(false);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [adminSelectedRequest?.id, adminSelectedRequest?.userId, token, isAdmin]);
 
   async function loadInitialData(authToken = token) {
     try {
@@ -576,8 +662,7 @@ export default function App() {
     setToken(''); setUser(null); setView('dashboard'); setDashboard(null); setCreditTypes([]);
     setSelectedCreditTypeId(''); setEstimationResult(null); setChatMessages([]); setAdminSummary(null); setAdminRequests([]); setAdminUsers([]); setNotice(''); setError('');
     setCreditsSubView('categories'); setSelectedCategory(null); setSelectedCredit(null); setCreditStartTab('active');
-    setReqPhone(''); setReqCity(''); setReqProfession(''); setReqProjectPurpose('');
-    setReqOtherIncome(''); setReqNotes(''); setReqDeclareAccurate(false);
+    setAtbForm(createInitialAtbForm(null));
     setAdminPage('overview'); setAdminSidebarOpen(false); setAdminUserSearchQuery(''); setAdminUserRoleFilter('all'); setProfileAvatarDraft(null); setProfileAvatarUrlInput('');
     setStoredToken(''); setSavedSimulations([]); setNotifications([]); setUnreadCount(0); setLoginHistory([]); setDocuments([]);
     setCurrentPassword(''); setNewPassword(''); setConfirmPassword(''); setConfirmPasswordAuth(''); setOtpCode(''); setOtpStatus(''); setAuthOtpCode(''); setAuthOtpStatus('');
@@ -619,7 +704,13 @@ export default function App() {
     }
     try {
       setError(''); setNotice(''); setIsActionBusy(true);
-      const body = { fullName: name, phone: profilePhone.trim(), city: profileCity.trim(), profession: profileProfession.trim() };
+      const body = {
+        fullName: name,
+        phone: profilePhone.trim(),
+        city: profileCity.trim(),
+        profession: profileProfession.trim(),
+        accountType: profileAccountType,
+      };
       if (profileAvatarDraft) body.avatarUrl = profileAvatarDraft;
       else if (urlOk) body.avatarUrl = url;
       const updated = await apiRequest('/auth/profile', { method: 'PATCH', body: JSON.stringify(body) }, token);
@@ -734,39 +825,100 @@ export default function App() {
     }
   }
 
-  async function onPickDocument() {
-    try {
-      const perm = await ImagePicker.requestMediaLibraryPermissionsAsync();
-      if (perm.status !== 'granted') {
-        setError('Permission photo refusée.');
+  function pickDocumentFromWebFile() {
+    if (Platform.OS !== 'web' || typeof document === 'undefined') return;
+    const input = document.createElement('input');
+    input.type = 'file';
+    input.accept = 'image/*,application/pdf';
+    input.onchange = async (e) => {
+      const file = e.target.files?.[0];
+      if (!file) return;
+      if (file.size > 650000) {
+        setError('Fichier trop volumineux (max ~650 Ko).');
         return;
       }
-      const result = await ImagePicker.launchImageLibraryAsync({ base64: true, quality: 0.7, mediaTypes: ['images'] });
+      try {
+        const reader = new FileReader();
+        reader.onload = async () => {
+          let dataUrl = typeof reader.result === 'string' ? reader.result : '';
+          if (!dataUrl) { setError('Lecture du fichier impossible.'); return; }
+          if (isImageMime(file.type)) {
+            dataUrl = await compressImageDataUrl(dataUrl);
+          }
+          applyDocDraft(dataUrl, file.name, file.type || 'application/octet-stream', setError, setDocDraft);
+          setNotice('Document prêt à être envoyé.');
+        };
+        reader.onerror = () => setError('Lecture du fichier impossible.');
+        reader.readAsDataURL(file);
+      } catch (err) {
+        setError(err.message || 'Import document impossible.');
+      }
+    };
+    input.click();
+  }
+
+  async function onPickDocument() {
+    if (Platform.OS === 'web') {
+      pickDocumentFromWebFile();
+      return;
+    }
+    try {
+      setError('');
+      const perm = await ImagePicker.requestMediaLibraryPermissionsAsync();
+      if (perm.status !== 'granted') {
+        setError('Permission galerie refusée.');
+        return;
+      }
+      const result = await ImagePicker.launchImageLibraryAsync({
+        base64: true,
+        quality: 0.55,
+        allowsEditing: true,
+        mediaTypes: ImagePicker.MediaTypeOptions?.Images ?? ['images'],
+      });
       if (result.canceled || !result.assets?.[0]) return;
       const asset = result.assets[0];
       if (!asset.base64) { setError('Document invalide.'); return; }
-      const dataUrl = `data:${asset.mimeType || 'image/jpeg'};base64,${asset.base64}`;
-      setDocDraft({ dataUrl, fileName: asset.fileName || `document-${Date.now()}.jpg`, mimeType: asset.mimeType || 'image/jpeg' });
+      const mimeType = asset.mimeType || 'image/jpeg';
+      let dataUrl = `data:${mimeType};base64,${asset.base64}`;
+      dataUrl = await compressImageDataUrl(dataUrl);
+      applyDocDraft(
+        dataUrl,
+        asset.fileName || `document-${Date.now()}.jpg`,
+        mimeType,
+        setError,
+        setDocDraft,
+      );
+      setNotice('Document prêt à être envoyé.');
     } catch (e) {
       setError(e.message || 'Import document impossible.');
     }
   }
 
   async function onUploadDocument() {
-    if (!docDraft) { setError('Ajoutez un document.'); return; }
+    if (!docDraft) { setError('Choisissez d’abord un document.'); return; }
+    if (docDraft.dataUrl.length > MAX_DOC_DATA_URL) {
+      setError('Document trop volumineux pour l’envoi.');
+      return;
+    }
     try {
-      setError(''); setNotice(''); setIsActionBusy(true);
+      setError(''); setNotice(''); setIsUploadingDoc(true);
+      const payload = {
+        type: docType,
+        fileName: docDraft.fileName,
+        mimeType: docDraft.mimeType,
+        dataUrl: docDraft.dataUrl,
+      };
       const created = await apiRequest('/documents', {
         method: 'POST',
-        body: JSON.stringify({ type: docType, fileName: docDraft.fileName, mimeType: docDraft.mimeType, dataUrl: docDraft.dataUrl }),
+        body: JSON.stringify(payload),
       }, token);
       setDocuments((prev) => [created, ...prev]);
       setDocDraft(null);
-      setNotice('Document uploadé.');
+      setNotice('Document enregistré avec succès.');
     } catch (e) {
       setError(e.message || 'Upload impossible.');
     } finally {
-      setIsActionBusy(false);
+      setIsUploadingDoc(false);
     }
   }
 
@@ -939,122 +1091,319 @@ export default function App() {
     await Sharing.shareAsync(fileUri);
   }
 
-  async function buildApplicationFormPdf(creditName) {
+  async function buildApplicationFormPdf(creditName, form = atbForm) {
+    const f = form || {};
     const pdf = await PDFDocument.create();
     const page = pdf.addPage([595, 842]);
-    const fontBold = await pdf.embedFont(StandardFonts.Helvetica_Bold);
+    const fontBold = await pdf.embedFont(StandardFonts.HelveticaBold);
     const font = await pdf.embedFont(StandardFonts.Helvetica);
     const { height: pageHeight, width: pageWidth } = page.getSize();
     
-    let y = pageHeight - 50;
+    // Margins and Columns
+    const margin = 35;
+    const contentWidth = pageWidth - margin * 2; // 525
+    let y = pageHeight - 35; // 807
     
+    const drawLineField = (label, value, x, y, width) => {
+      page.drawText(label, { x, y, size: 7, font: fontBold, color: { r: 0.15, g: 0.15, b: 0.15 } });
+      const labelWidth = fontBold.widthOfTextAtSize(label, 7);
+      const startX = x + labelWidth + 3;
+      const lineWidth = width - labelWidth - 3;
+      if (value) {
+        page.drawText(String(value), { x: startX + 2, y, size: 7, font, color: { r: 0.2, g: 0.2, b: 0.2 } });
+      }
+      page.drawLine({
+        start: { x: startX, y: y - 1 },
+        end: { x: startX + lineWidth, y: y - 1 },
+        thickness: 0.5,
+        color: { r: 0.75, g: 0.75, b: 0.75 }
+      });
+    };
+
+    const drawCheckboxField = (x, y, label, checked) => {
+      page.drawRectangle({
+        x,
+        y: y - 1,
+        width: 7,
+        height: 7,
+        borderColor: { r: 0.4, g: 0.4, b: 0.4 },
+        borderWidth: 0.75,
+        color: checked ? { r: 166/255, g: 25/255, b: 46/255 } : undefined
+      });
+      page.drawText(label, { x: x + 11, y, size: 7, font, color: { r: 0.2, g: 0.2, b: 0.2 } });
+    };
+
+    const drawSectionHeader = (title, secY) => {
+      page.drawRectangle({
+        x: margin,
+        y: secY - 3,
+        width: contentWidth,
+        height: 12,
+        color: { r: 240/255, g: 242/255, b: 245/255 },
+      });
+      page.drawText(title, {
+        x: margin + 5,
+        y: secY,
+        size: 8,
+        font: fontBold,
+        color: { r: 166/255, g: 25/255, b: 46/255 },
+      });
+    };
+
+    // Header Rect
     page.drawRectangle({
-      x: 40,
-      y: y - 50,
-      width: pageWidth - 80,
-      height: 60,
+      x: margin,
+      y: y - 40,
+      width: contentWidth,
+      height: 40,
       color: { r: 166/255, g: 25/255, b: 46/255 },
     });
     
     page.drawText('ARAB TUNISIAN BANK - ATB', {
-      x: 60,
-      y: y - 25,
-      size: 16,
+      x: margin + 15,
+      y: y - 16,
+      size: 11,
       font: fontBold,
       color: { r: 1, g: 1, b: 1 },
     });
     
-    page.drawText('DEMANDE DE CRÉDIT AUX PARTICULIERS', {
-      x: 60,
-      y: y - 42,
-      size: 10,
+    page.drawText('DEMANDE DE CRÉDIT AUX PARTICULIERS / AGENCE ATB', {
+      x: margin + 15,
+      y: y - 28,
+      size: 8,
       font: font,
+      color: { r: 0.9, g: 0.9, b: 0.9 },
+    });
+
+    page.drawText('Page 1/1', {
+      x: pageWidth - margin - 55,
+      y: y - 22,
+      size: 8,
+      font: fontBold,
       color: { r: 1, g: 1, b: 1 },
     });
     
-    y -= 80;
+    y -= 52;
     
-    page.drawText(`Formulaire de Demande : ${creditName}`, {
-      x: 40,
+    // Metadata row
+    drawLineField('Agence :', f.agency || 'Tunis Lafayette', margin, y, 150);
+    drawLineField('Date :', new Date().toLocaleDateString('fr-FR'), margin + 170, y, 140);
+    drawLineField('N° de Compte :', user?.accountNumber || '—', margin + 330, y, 195);
+    
+    y -= 18;
+    
+    // SECTION 1: CLIENT 1
+    drawSectionHeader('1. DONNÉES DU DEMANDEUR DE CRÉDIT (CLIENT 1)', y);
+    y -= 14;
+    drawLineField('Nom & Prénom :', user?.fullName || '—', margin, y, 525);
+    
+    y -= 14;
+    page.drawText("Pièce d'identité :", { x: margin, y, size: 7, font: fontBold });
+    const idType = f.idType || 'cin';
+    drawCheckboxField(margin + 80, y, 'CIN', idType === 'cin');
+    drawCheckboxField(margin + 130, y, 'Passeport', idType === 'passeport');
+    drawCheckboxField(margin + 200, y, 'Carte de Séjour', idType === 'carte_sejour');
+    drawLineField('N° Pièce :', f.idNumber || user?.cin || '—', margin + 300, y, 225);
+    
+    y -= 14;
+    page.drawText("Situation Prof. :", { x: margin, y, size: 7, font: fontBold });
+    const ps = f.professionalStatus || 'titulaire';
+    drawCheckboxField(margin + 80, y, 'Titulaire', ps === 'titulaire');
+    drawCheckboxField(margin + 140, y, 'Contractuel', ps === 'contractuel');
+    drawCheckboxField(margin + 210, y, 'Retraité', ps === 'retraite');
+    drawCheckboxField(margin + 270, y, 'Libéral / Chef entreprise', ps === 'professionnel');
+    
+    y -= 14;
+    drawLineField('Revenu Net Mensuel (TND) :', formatMoney(user?.salary || salary).replace(' TND', ''), margin, y, 240);
+    const otherIncomeLbl = f.otherIncomeAmount ? `${f.otherIncomeAmount} TND` : '—';
+    drawLineField('Autres sources revenus :', otherIncomeLbl, margin + 260, y, 265);
+    y -= 14;
+    drawLineField('Adresse :', f.address || '—', margin, y, 525);
+    y -= 18;
+    
+    // SECTION 2: CLIENT 2 (JOINT ACCOUNT)
+    drawSectionHeader('2. COMPTE JOINT - DONNÉES DU DEUXIÈME DEMANDEUR (SI APPLICABLE)', y);
+    y -= 14;
+    drawLineField('Nom & Prénom :', f.client2Enabled ? (f.client2Name || '—') : '—', margin, y, 525);
+    
+    y -= 14;
+    page.drawText("Pièce d'identité :", { x: margin, y, size: 7, font: fontBold });
+    const c2Id = f.client2IdType || 'cin';
+    drawCheckboxField(margin + 80, y, 'CIN', f.client2Enabled && c2Id === 'cin');
+    drawCheckboxField(margin + 130, y, 'Passeport', f.client2Enabled && c2Id === 'passeport');
+    drawCheckboxField(margin + 200, y, 'Carte de Séjour', f.client2Enabled && c2Id === 'carte_sejour');
+    drawLineField('N° Pièce :', f.client2Enabled ? (f.client2IdNumber || '—') : '—', margin + 300, y, 225);
+    
+    y -= 14;
+    page.drawText("Situation Prof. :", { x: margin, y, size: 7, font: fontBold });
+    const c2ps = f.client2ProfessionalStatus || 'titulaire';
+    drawCheckboxField(margin + 80, y, 'Titulaire', f.client2Enabled && c2ps === 'titulaire');
+    drawCheckboxField(margin + 140, y, 'Contractuel', f.client2Enabled && c2ps === 'contractuel');
+    drawCheckboxField(margin + 210, y, 'Retraité', f.client2Enabled && c2ps === 'retraite');
+    drawCheckboxField(margin + 270, y, 'Libéral / Chef entreprise', f.client2Enabled && c2ps === 'professionnel');
+    drawLineField('Revenu Net :', f.client2Enabled ? (f.client2NetSalary || '—') : '—', margin + 380, y, 145);
+    
+    y -= 18;
+    
+    // SECTION 3: CONJOINT
+    drawSectionHeader('3. DONNÉES DU CONJOINT (ÉPOUX / ÉPOUSE)', y);
+    y -= 14;
+    drawLineField('Nom & Prénom :', f.spouseEnabled ? (f.spouseName || '—') : '—', margin, y, 240);
+    drawLineField('Employeur / Entreprise :', f.spouseEnabled ? (f.spouseEmployer || '—') : '—', margin + 260, y, 265);
+    
+    y -= 14;
+    page.drawText("Situation Prof. :", { x: margin, y, size: 7, font: fontBold });
+    const sps = f.spouseProfessionalStatus || 'titulaire';
+    drawCheckboxField(margin + 80, y, 'Titulaire', f.spouseEnabled && sps === 'titulaire');
+    drawCheckboxField(margin + 140, y, 'Contractuel', f.spouseEnabled && sps === 'contractuel');
+    drawCheckboxField(margin + 210, y, 'Retraité', f.spouseEnabled && sps === 'retraite');
+    drawCheckboxField(margin + 270, y, 'Libéral / Chef entreprise', f.spouseEnabled && sps === 'professionnel');
+    drawLineField('Revenu Net :', f.spouseEnabled ? (f.spouseNetSalary || '—') : '—', margin + 380, y, 145);
+    
+    y -= 18;
+    
+    // SECTION 4: CREDIT DONNEES
+    drawSectionHeader('4. DONNÉES DU CRÉDIT SOLLICITÉ', y);
+    y -= 14;
+    drawLineField('Montant du Crédit (TND) :', String(amount || ''), margin, y, 160);
+    drawLineField('Objet du Crédit :', f.creditPurpose || creditName || '—', margin + 175, y, 350);
+    
+    y -= 14;
+    drawLineField('Garanties Proposées :', f.guarantees || 'Domiciliation de salaire et assurance emprunteur', margin, y, 525);
+    
+    y -= 14;
+    const per = f.repaymentPeriodicity || 'mensuelle';
+    page.drawText("Périodicité Remb. :", { x: margin, y, size: 7, font: fontBold });
+    drawCheckboxField(margin + 100, y, 'Mensuelle', per === 'mensuelle');
+    drawCheckboxField(margin + 170, y, 'Trimestrielle', per === 'trimestrielle');
+    drawCheckboxField(margin + 250, y, 'Semestrielle', per === 'semestrielle');
+    drawCheckboxField(margin + 330, y, 'Annuelle', per === 'annuelle');
+    drawLineField('Durée (Mois) :', String(durationMonths || ''), margin + 410, y, 115);
+    
+    y -= 14;
+    page.drawText("Convention :", { x: margin, y, size: 7, font: fontBold });
+    drawCheckboxField(margin + 100, y, 'Oui (Cadre convention)', f.convention === 'oui');
+    drawCheckboxField(margin + 220, y, 'Non', f.convention !== 'oui');
+    drawLineField('Nom de la Convention :', f.convention === 'oui' ? (f.conventionName || '—') : '—', margin + 280, y, 245);
+    
+    y -= 18;
+    
+    // SECTION 5: CATEGORY SPECIFICS
+    drawSectionHeader('5. TYPE DE CRÉDIT & INFORMATIONS COMPLÉMENTAIRES', y);
+    y -= 14;
+    
+    const cat = f.creditCategory || inferCreditCategory(creditName);
+    const isSayara = cat === 'vehicule';
+    const isImmob = cat === 'immobilier';
+    const isConsom = cat === 'consommation';
+    
+    drawCheckboxField(margin, y, 'CRÉDIT VÉHICULE (SAYARA)', isSayara);
+    drawCheckboxField(margin + 170, y, 'CRÉDIT IMMOBILIER (SAKAN/RENOV)', isImmob);
+    drawCheckboxField(margin + 355, y, 'CRÉDIT DE CONSOMMATION / AUTRE', isConsom);
+    
+    y -= 15;
+    
+    if (isSayara) {
+      drawLineField('Puissance fiscale (CV) :', f.vehicleFiscalPower || '—', margin + 15, y, 140);
+      drawCheckboxField(margin + 175, y, 'Véhicule Neuf', f.vehicleIsNew !== false);
+      drawCheckboxField(margin + 265, y, 'Véhicule Occasion', f.vehicleIsNew === false);
+      drawLineField('1ère Mise en circulation :', f.vehicleFirstCirculation || '—', margin + 365, y, 160);
+    } else if (isImmob) {
+      drawCheckboxField(margin + 15, y, 'Construction', Boolean(f.immoConstruction));
+      drawCheckboxField(margin + 100, y, 'Aménagement', Boolean(f.immoAmenagement));
+      drawCheckboxField(margin + 190, y, 'Terrain', Boolean(f.immoTerrain));
+      drawCheckboxField(margin + 265, y, 'Achat Promoteur', Boolean(f.immoPromoter));
+      drawCheckboxField(margin + 365, y, 'Achat Particulier', Boolean(f.immoParticulier));
+      y -= 13;
+      drawLineField('Valeur estimée du bien / coût total des travaux (TND) :', f.propertyValue || String(amount || ''), margin + 15, y, 510);
+    } else {
+      page.drawText("Détails consommation : Crédit destiné au financement des besoins personnels courants.", {
+        x: margin + 15,
+        y,
+        size: 7,
+        font,
+        color: { r: 0.3, g: 0.3, b: 0.3 }
+      });
+    }
+    
+    y -= 22;
+    
+    // SECTION 6: SIGNATURES
+    drawSectionHeader('6. SIGNATURES & DÉCLARATION DES PARTIES', y);
+    y -= 15;
+    page.drawText("Déclaration demandeur : Je certifie l'exactitude des informations fournies ci-dessus.", {
+      x: margin,
       y,
-      size: 14,
-      font: fontBold,
-      color: { r: 0.1, g: 0.1, b: 0.1 },
+      size: 6.5,
+      font: font,
+      color: { r: 0.3, g: 0.3, b: 0.3 }
     });
     
-    y -= 30;
+    y -= 12;
     
-    page.drawText('INFORMATIONS DU DEMANDEUR', { x: 40, y, size: 11, font: fontBold });
-    y -= 15;
-    page.drawText(`Nom et Prénom : ${user?.fullName || 'Client'}`, { x: 50, y, size: 10, font });
-    y -= 15;
-    page.drawText(`Email : ${user?.email || ''}`, { x: 50, y, size: 10, font });
-    y -= 15;
-    page.drawText(`Téléphone : ${user?.phone || reqPhone || '—'}`, { x: 50, y, size: 10, font });
-    y -= 15;
-    page.drawText(`Ville / Adresse : ${user?.city || reqCity || '—'}`, { x: 50, y, size: 10, font });
-    y -= 15;
-    page.drawText(`Profession : ${user?.profession || reqProfession || '—'}`, { x: 50, y, size: 10, font });
-    y -= 15;
-    page.drawText(`Revenu mensuel : ${formatMoney(user?.salary || salary)}`, { x: 50, y, size: 10, font });
+    const sigBoxHeight = 55;
+    const sigBoxWidth = 150;
     
-    y -= 30;
+    // Sig box 1
+    page.drawRectangle({
+      x: margin + 10,
+      y: y - sigBoxHeight,
+      width: sigBoxWidth,
+      height: sigBoxHeight,
+      borderColor: { r: 0.8, g: 0.8, b: 0.8 },
+      borderWidth: 0.5,
+    });
+    page.drawText('Signature du Demandeur 1', { x: margin + 15, y: y - 10, size: 7, font: fontBold });
     
-    page.drawText('CARACTÉRISTIQUES DE LA DEMANDE', { x: 40, y, size: 11, font: fontBold });
-    y -= 15;
-    page.drawText(`Type de Crédit sélectionné : ${creditName}`, { x: 50, y, size: 10, font });
+    // Sig box 2
+    page.drawRectangle({
+      x: margin + 185,
+      y: y - sigBoxHeight,
+      width: sigBoxWidth,
+      height: sigBoxHeight,
+      borderColor: { r: 0.8, g: 0.8, b: 0.8 },
+      borderWidth: 0.5,
+    });
+    page.drawText('Signature du Demandeur 2', { x: margin + 190, y: y - 10, size: 7, font: fontBold });
     
-    if (creditName === 'Crédit SAYARA') {
-      y -= 15;
-      page.drawText(`Montant : Sans plafond`, { x: 50, y, size: 10, font });
-      y -= 15;
-      page.drawText(`Financement : Jusqu'à 80% du prix du véhicule`, { x: 50, y, size: 10, font });
-      y -= 15;
-      page.drawText(`Durée de remboursement : Jusqu'à 7 ans`, { x: 50, y, size: 10, font });
-    } else if (creditName.includes('START')) {
-      y -= 15;
-      page.drawText(`Montant : Jusqu'à 2000 DT`, { x: 50, y, size: 10, font });
-      y -= 15;
-      page.drawText(`Durée de remboursement : Jusqu'à 36 mois`, { x: 50, y, size: 10, font });
-    }
+    // Visa box
+    page.drawRectangle({
+      x: margin + 360,
+      y: y - sigBoxHeight,
+      width: sigBoxWidth,
+      height: sigBoxHeight,
+      color: { r: 250/255, g: 250/255, b: 250/255 },
+      borderColor: { r: 0.8, g: 0.8, b: 0.8 },
+      borderWidth: 0.5,
+    });
+    page.drawText('Visa et Cachet ATB', { x: margin + 365, y: y - 10, size: 7, font: fontBold, color: { r: 166/255, g: 25/255, b: 46/255 } });
     
-    y -= 30;
+    y -= (sigBoxHeight + 15);
     
-    page.drawText('DOCUMENTS À FOURNIR', { x: 40, y, size: 11, font: fontBold });
-    y -= 15;
+    page.drawLine({
+      start: { x: margin, y },
+      end: { x: pageWidth - margin, y },
+      thickness: 0.5,
+      color: { r: 0.8, g: 0.8, b: 0.8 }
+    });
     
-    const docsList = creditName === 'Crédit SAYARA' ? [
-      "- Pièce d'identité valide (CIN)",
-      "- Fiche de paie récente ou justificatif de revenu",
-      "- 3 dernières fiches de paie pour les salariés",
-      "- Déclaration Unique de Revenus (DUR) pour les non salariés",
-      "- 6 derniers relevés de l'ancien compte (nouveaux clients)",
-      "- Promesse de vente établie + copie carte grise (pour véhicule d'occasion)",
-      "- Facture pro forma (pour véhicule acheté auprès d'un concessionnaire)",
-      "- Demande de crédit ATB signée"
-    ] : [
-      "- Copie CIN",
-      "- Demande de crédit ATB",
-      "- 3 dernières fiches de paie ou DUR (caution ou client)",
-      "- Copie engagement avec l'Auto-école",
-      "- Justificatif d'adresse (STEG, SONEDE, Téléphone)",
-      "- Attestation de travail et attestation de salaire",
-      "- Caution solidaire (si bénéficiaire non actif)"
-    ];
+    y -= 10;
     
-    for (const docLine of docsList) {
-      page.drawText(docLine, { x: 50, y, size: 9, font });
-      y -= 14;
-    }
+    page.drawText('RÉFÉRENCE TECHNIQUE : DCRT/03-2016/V3', {
+      x: margin,
+      y,
+      size: 6,
+      font: font,
+      color: { r: 0.5, g: 0.5, b: 0.5 }
+    });
     
-    y -= 25;
-    
-    page.drawText('Signature du Client', { x: 80, y, size: 10, font: fontBold });
-    page.drawText('Visa de la Banque', { x: pageWidth - 180, y, size: 10, font: fontBold });
-    
-    y -= 45;
-    page.drawText('________________________', { x: 60, y, size: 10, font });
-    page.drawText('________________________', { x: pageWidth - 200, y, size: 10, font });
+    page.drawText('Arab Tunisian Bank - ATB Banque Tunisienne', {
+      x: pageWidth - margin - 180,
+      y,
+      size: 6,
+      font: font,
+      color: { r: 0.5, g: 0.5, b: 0.5 }
+    });
     
     const base64 = await pdf.saveAsBase64({ dataUri: false });
     return base64;
@@ -1063,7 +1412,7 @@ export default function App() {
   async function onDownloadDemandeCredit(creditName) {
     try {
       setError(''); setNotice(''); setIsActionBusy(true);
-      const base64 = await buildApplicationFormPdf(creditName);
+      const base64 = await buildApplicationFormPdf(creditName, atbForm);
       if (!base64) return;
       await shareNamedPdfBase64(base64, 'Demande-de-credit-aux-particuliers.pdf');
       setNotice('Demande de crédit exportée.');
@@ -1087,23 +1436,14 @@ export default function App() {
     return 0.2;
   }
 
-  function validateCreditApplicationForm() {
-    const phoneDigits = reqPhone.replace(/\D/g, '');
-    if (phoneDigits.length < 8) return 'Téléphone : au moins 8 chiffres.';
-    if (reqCity.trim().length < 2) return 'Ville ou adresse (minimum 2 caractères).';
-    if (reqProfession.trim().length < 2) return 'Profession / situation.';
-    if (reqProjectPurpose.trim().length < 15) return "Objet du financement ou projet (minimum 15 caractères).";
-    if (!reqDeclareAccurate) return "Merci de confirmer la véracité des informations.";
-    const extra = Number(String(reqOtherIncome).replace(',', '.'));
-    if (!Number.isFinite(extra) || extra < 0) return "Revenus complémentaires invalides.";
-    return '';
-  }
-
   function validateSim() {
     if (!selectedCreditTypeId) return 'Sélectionne un type de crédit.';
-    const a = Number(amount), d = Number(durationMonths);
+    const a = Number(amount);
+    const d = Number(durationMonths);
+    const sal = Number(String(salary).replace(',', '.'));
     if (!Number.isFinite(a) || a <= 0) return 'Le montant doit être positif.';
     if (!Number.isFinite(d) || d <= 0) return 'La durée doit être positive.';
+    if (!Number.isFinite(sal) || sal <= 0) return 'Le salaire net mensuel doit être positif.';
     if (selectedType) {
       if (a < selectedType.minAmount || a > selectedType.maxAmount) return `Montant: ${selectedType.minAmount} – ${selectedType.maxAmount}`;
       if (d < selectedType.minDurationMonths || d > selectedType.maxDurationMonths) return `Durée: ${selectedType.minDurationMonths} – ${selectedType.maxDurationMonths} mois`;
@@ -1112,11 +1452,12 @@ export default function App() {
   }
 
   async function onEstimate() {
-    const ve = validateSim(); if (ve) { setError(ve); return; }
+    const ve = validateSim();
+    if (ve) { setError(ve); return; }
     try {
-      setError(''); setNotice(''); setIsActionBusy(true);
-      const sal = Number(dashboard?.client?.salary || user?.salary || 0);
-      const monthlyOtherIncome = Number(String(reqOtherIncome).replace(',', '.')) || 0;
+      setError(''); setNotice(''); setIsEstimating(true);
+      const sal = Number(String(salary).replace(',', '.'));
+      const monthlyOtherIncome = Number(String(atbForm.otherIncomeAmount).replace(',', '.')) || 0;
       const r = await apiRequest('/estimation', {
         method: 'POST',
         body: JSON.stringify({
@@ -1127,36 +1468,38 @@ export default function App() {
           monthlyOtherIncome,
         }),
       }, token);
-      setEstimationResult(r); setShowSchedule(false); setNotice('Estimation calculée !');
-    } catch (e) { setError(e.message || 'Estimation impossible.'); } finally { setIsActionBusy(false); }
+      setEstimationResult(r);
+      setShowSchedule(false);
+      setNotice('Estimation calculée !');
+    } catch (e) {
+      setError(e.message || 'Estimation impossible.');
+    } finally {
+      setIsEstimating(false);
+    }
   }
 
   async function onSubmitRequest() {
     const ve = validateSim(); if (ve) { setError(ve); return; }
     if (!estimationResult) { setError('Calculez d’abord l’estimation, puis complétez le formulaire.'); return; }
-    const fv = validateCreditApplicationForm(); if (fv) { setError(fv); return; }
+    const fv = validateAtbForm(atbForm, user); if (fv) { setError(fv); return; }
     try {
       setError(''); setNotice(''); setIsActionBusy(true);
-      const monthlyOtherIncome = Number(String(reqOtherIncome).replace(',', '.')) || 0;
       await apiRequest('/requests', {
         method: 'POST',
         body: JSON.stringify({
           creditTypeId: Number(selectedCreditTypeId),
           requestedAmount: Number(amount),
           requestedDurationMonths: Number(durationMonths),
+          salary: Number(String(salary).replace(',', '.')),
           applicationForm: {
-            phone: reqPhone.trim().replace(/\s/g, ''),
-            city: reqCity.trim(),
-            profession: reqProfession.trim(),
-            projectPurpose: reqProjectPurpose.trim(),
-            monthlyOtherIncome,
-            additionalNotes: reqNotes.trim(),
-            acceptsAccuracyDeclaration: Boolean(reqDeclareAccurate),
+            ...atbFormToPayload(atbForm, user),
+            attachedDocumentIds: documents.map((d) => d.id),
+            simulationSalary: Number(String(salary).replace(',', '.')),
           },
         }),
       }, token);
       await loadInitialData(); setView('dashboard'); setNotice('Demande soumise avec succès !');
-      setReqNotes(''); setReqDeclareAccurate(false);
+      setAtbForm((prev) => ({ ...prev, acceptsDeclaration: false, additionalNotes: '' }));
     } catch (e) { setError(e.message || 'Envoi impossible.'); } finally { setIsActionBusy(false); }
   }
 
@@ -1205,7 +1548,6 @@ export default function App() {
   const tabsClient = [
     { key: 'dashboard', label: t('tab.dashboard'), icon: Home },
     { key: 'credits', label: t('tab.credits'), icon: CreditCard },
-    { key: 'pro', label: t('tab.pro'), icon: Banknote },
     { key: 'simulation', label: t('tab.simulation'), icon: Calculator },
     { key: 'chatbot', label: t('tab.chatbot'), icon: MessageCircle },
     { key: 'notifications', label: t('tab.notifications'), icon: Bell },
@@ -1356,7 +1698,6 @@ export default function App() {
                 />
               ) : null}
 
-              <Text style={s.helper}>{t('auth.testAccounts')}</Text>
               {notice ? <Text style={s.noticeText}>{notice}</Text> : null}
               {error ? <Text style={s.errorText}>{error}</Text> : null}
             </View>
@@ -1418,7 +1759,13 @@ export default function App() {
             <Image source={{ uri: user.avatarUrl }} style={s.headerUserAvatar} />
           ) : null}
           <View style={{ flexShrink: 1 }}>
-            <Text style={s.headerGreet}>Bonjour</Text>
+            <Text style={s.headerGreet}>
+              {user?.role === 'admin'
+                ? 'Administrateur'
+                : user?.accountType === 'professionnel'
+                ? 'Compte Professionnel'
+                : 'Compte Particulier'}
+            </Text>
             <Text style={[s.headerName, isTiny && { fontSize: 14 }]} numberOfLines={1}>{user?.fullName}</Text>
           </View>
         </View>
@@ -1472,12 +1819,12 @@ export default function App() {
               <KpiCard icon={Clock} label="Demandes" value={requests.length} color={COLORS.warning} {...themed} />
             </View>
             <View style={[s.kpiRow, { marginTop: 2 }]}>
-              <KpiCard icon={Banknote} label="Offres pro" value={PRO_CREDIT_CATALOG.length} color={COLORS.primary} {...themed} />
               <KpiCard icon={TrendingUp} label="Type actif" value={selectedType?.name || '-'} color={COLORS.success} {...themed} />
+              <KpiCard icon={Bell} label="Notifications" value={unreadCount} color={COLORS.primary} {...themed} />
             </View>
 
             <View style={s.quickActionRow}>
-              <PrimaryButton label="Voir crédits Pro" onPress={() => setView('pro')} {...themed} />
+              <PrimaryButton label="Voir les crédits" onPress={() => setView('credits')} {...themed} />
               <SecondaryButton label="Démarrer simulation" onPress={() => setView('simulation')} {...themed} />
             </View>
 
@@ -1854,96 +2201,46 @@ export default function App() {
           </>
         )}
 
-        {/* ── PRO CREDITS ── */}
-        {view === 'pro' && (
-          <>
-            <SectionCard {...themed}>
-              <SectionTitle {...themed}>Solutions de crédit pro</SectionTitle>
-              <Text style={s.proLead}>
-                Offres premium avec traitement prioritaire, accompagnement dossier et suivi digital.
-              </Text>
-              {PRO_CREDIT_CATALOG.map((offer) => (
-                <View key={offer.name} style={s.proCard}>
-                  <View style={s.listItemHead}>
-                    <Text style={s.listItemTitle}>{offer.name}</Text>
-                    <View style={s.rateTag}>
-                      <Text style={s.rateTagText}>Réponse {offer.speed}</Text>
-                    </View>
-                  </View>
-                  <Text style={s.listItemSub}>{offer.target}</Text>
-                </View>
-              ))}
-            </SectionCard>
-
-            <SectionCard {...themed}>
-              <SectionTitle {...themed}>Fonctionnalités Pro</SectionTitle>
-              <View style={s.proFeatureItem}>
-                <CheckCircle2 size={16} color={COLORS.success} />
-                <Text style={s.proFeatureText}>Pré-analyse rapide du dossier en 3 étapes.</Text>
-              </View>
-              <View style={s.proFeatureItem}>
-                <CheckCircle2 size={16} color={COLORS.success} />
-                <Text style={s.proFeatureText}>Priorisation automatique des demandes urgentes.</Text>
-              </View>
-              <View style={s.proFeatureItem}>
-                <CheckCircle2 size={16} color={COLORS.success} />
-                <Text style={s.proFeatureText}>Orientation instantanée vers la meilleure offre.</Text>
-              </View>
-              <View style={s.proFeatureItem}>
-                <CheckCircle2 size={16} color={COLORS.success} />
-                <Text style={s.proFeatureText}>Suivi du statut et assistance dans {"l\u2019application"}.</Text>
-              </View>
-              <View style={s.quickActionRow}>
-                <PrimaryButton label="Lancer une simulation pro" onPress={() => setView('simulation')} {...themed} />
-              </View>
-            </SectionCard>
-
-            <SectionCard {...themed}>
-              <SectionTitle {...themed}>Recommandations intelligentes</SectionTitle>
-              {topRecommendedTypes.length === 0 ? (
-                <EmptyState icon="✨" title="Aucune offre active" description={"Activez des produits dans l\u2019admin pour voir les recommandations."} {...themed} />
-              ) : topRecommendedTypes.map((offer, idx) => (
-                <View key={offer.id} style={s.recoCard}>
-                  <View style={s.listItemHead}>
-                    <Text style={s.listItemTitle}>#{idx + 1} {offer.name}</Text>
-                    <Text style={s.recoRate}>{offer.annualRate}%</Text>
-                  </View>
-                  <Text style={s.listItemSub}>Durée optimale : {offer.minDurationMonths}-{offer.maxDurationMonths} mois</Text>
-                  <SecondaryButton label="Utiliser pour simulation" onPress={() => { setSelectedCreditTypeId(String(offer.id)); setView('simulation'); }} {...themed} />
-                </View>
-              ))}
-            </SectionCard>
-
-            <SectionCard {...themed}>
-              <SectionTitle {...themed}>Parcours complet</SectionTitle>
-              <View style={s.stepItem}>
-                <View style={[s.stepDot, { backgroundColor: selectedCreditTypeId ? COLORS.success : COLORS.textLight }]} />
-                <Text style={s.stepText}>{"1. Choisir l\u2019offre adaptée"}</Text>
-              </View>
-              <View style={s.stepItem}>
-                <View style={[s.stepDot, { backgroundColor: amount && durationMonths ? COLORS.success : COLORS.textLight }]} />
-                <Text style={s.stepText}>2. Simuler montant et durée</Text>
-              </View>
-              <View style={s.stepItem}>
-                <View style={[s.stepDot, { backgroundColor: estimationResult ? COLORS.success : COLORS.textLight }]} />
-                <Text style={s.stepText}>3. Analyser score et risque</Text>
-              </View>
-              <View style={s.stepItem}>
-                <View style={[s.stepDot, { backgroundColor: requests.length > 0 ? COLORS.success : COLORS.textLight }]} />
-                <Text style={s.stepText}>4. Soumettre puis suivre la demande</Text>
-              </View>
-            </SectionCard>
-          </>
-        )}
-
         {/* ── SIMULATION ── */}
         {view === 'simulation' && (
           <SectionCard {...themed}>
             <SectionTitle {...themed}>Simulation de crédit</SectionTitle>
-            <View style={s.chipRow}>
-              <CreditCard size={16} color={COLORS.primary} />
-              <Text style={s.chipText}>Type : {selectedType?.name || 'Aucun sélectionné'}</Text>
-            </View>
+            <InputLabel {...themed}>Type de crédit</InputLabel>
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={s.creditTypeScroll}>
+              {creditTypes.filter((t) => t.isActive).map((t) => {
+                const active = String(selectedCreditTypeId) === String(t.id);
+                return (
+                  <Pressable
+                    key={t.id}
+                    style={[s.creditTypeChip, active && s.creditTypeChipActive]}
+                    onPress={() => { setSelectedCreditTypeId(String(t.id)); setEstimationResult(null); }}
+                  >
+                    <Text style={[s.creditTypeChipText, active && s.creditTypeChipTextActive]} numberOfLines={2}>
+                      {t.name}
+                    </Text>
+                    <Text style={[s.creditTypeChipRate, active && s.creditTypeChipTextActive]}>{t.annualRate}%</Text>
+                  </Pressable>
+                );
+              })}
+            </ScrollView>
+            {!selectedCreditTypeId ? (
+              <Text style={s.formMuted}>Sélectionnez un type de crédit pour lancer l’estimation.</Text>
+            ) : (
+              <View style={s.chipRow}>
+                <CreditCard size={16} color={COLORS.primary} />
+                <Text style={s.chipText}>Type : {selectedType?.name || '—'}</Text>
+              </View>
+            )}
+            <InputLabel {...themed}>Salaire net mensuel (TND)</InputLabel>
+            <TextInput
+              style={s.input}
+              keyboardType="decimal-pad"
+              value={salary}
+              onChangeText={(v) => { setSalary(v); setEstimationResult(null); }}
+              placeholder="Ex: 2500"
+              placeholderTextColor={COLORS.textLight}
+            />
+            <Text style={s.formHint}>Revenu pris en compte pour le ratio d’endettement.</Text>
             <View style={s.presetRow}>
               {[5000, 10000, 20000, 50000].map((presetAmount) => (
                 <Pressable key={presetAmount} style={s.presetChip} onPress={() => setAmount(String(presetAmount))}>
@@ -1963,13 +2260,24 @@ export default function App() {
             <InputLabel {...themed}>Durée (mois)</InputLabel>
             <TextInput style={s.input} keyboardType="numeric" value={durationMonths} onChangeText={setDurationMonths} placeholder="Ex: 36" placeholderTextColor={COLORS.textLight} />
 
-            <PrimaryButton label={"Calculer l\u2019estimation"} onPress={onEstimate} disabled={isActionBusy} loading={isActionBusy} {...themed} />
+            <View style={s.estimateActionWrap}>
+              <PrimaryButton
+                label={"Calculer l\u2019estimation"}
+                onPress={onEstimate}
+                disabled={isEstimating || !selectedCreditTypeId}
+                loading={isEstimating}
+                {...themed}
+              />
+            </View>
 
             {!estimationResult ? <Text style={s.formMuted}>Après estimation, vous pourrez remplir le formulaire et envoyer la demande.</Text> : null}
 
             {estimationResult ? (
               <View style={s.resultCard}>
                 <Text style={s.resultTitle}>{"Résultat de l\u2019estimation"}</Text>
+                <View style={s.resultRow}><Text style={s.resultLabel}>Salaire retenu</Text><Text style={s.resultValue}>{formatMoney(estimationResult.input?.salary ?? salary)}</Text></View>
+                <View style={s.resultRow}><Text style={s.resultLabel}>Montant</Text><Text style={s.resultValue}>{formatMoney(estimationResult.input?.amount ?? amount)}</Text></View>
+                <View style={s.resultRow}><Text style={s.resultLabel}>Durée</Text><Text style={s.resultValue}>{estimationResult.input?.durationMonths ?? durationMonths} mois</Text></View>
                 <View style={s.resultRow}><Text style={s.resultLabel}>Mensualité</Text><Text style={s.resultValue}>{formatMoney(estimationResult.estimation.monthlyPayment)}</Text></View>
                 <View style={s.resultRow}><Text style={s.resultLabel}>Coût total</Text><Text style={s.resultValue}>{formatMoney(estimationResult.estimation.totalCost)}</Text></View>
                 <View style={s.resultRow}><Text style={s.resultLabel}>Ratio endettement</Text><Text style={s.resultValue}>{formatPercent(estimationResult.estimation.debtRatio)}</Text></View>
@@ -2016,42 +2324,26 @@ export default function App() {
               </View>
             ) : null}
 
-            <SectionTitle {...themed}>Formulaire de demande</SectionTitle>
-            <Text style={s.formHint}>Renseigné pour chaque demande de crédit. Soumission possible après estimation.</Text>
-            <InputLabel {...themed}>Téléphone</InputLabel>
-            <TextInput style={s.input} value={reqPhone} onChangeText={setReqPhone} placeholder="+216 XX XXX XXX" keyboardType="phone-pad" placeholderTextColor={COLORS.textLight} />
-            <InputLabel {...themed}>Ville / adresse</InputLabel>
-            <TextInput style={s.input} value={reqCity} onChangeText={setReqCity} placeholder="Ville, rue…" placeholderTextColor={COLORS.textLight} />
-            <InputLabel {...themed}>Profession / situation</InputLabel>
-            <TextInput style={s.input} value={reqProfession} onChangeText={setReqProfession} placeholder="Employé, rentier, auto-entrepreneur…" placeholderTextColor={COLORS.textLight} />
-            <InputLabel {...themed}>Objet du financement (projet)</InputLabel>
-            <TextInput
-              style={[s.input, s.formTextArea]}
-              value={reqProjectPurpose}
-              onChangeText={setReqProjectPurpose}
-              placeholder={"D\u00e9crivez le projet financ\u00e9 (min. 15 caract\u00e8res)"}
-              placeholderTextColor={COLORS.textLight}
-              multiline
-              textAlignVertical="top"
-            />
-            <InputLabel {...themed}>Autres revenus mensuels (TND, optionnel)</InputLabel>
-            <TextInput style={s.input} value={reqOtherIncome} onChangeText={setReqOtherIncome} placeholder="0" keyboardType="decimal-pad" placeholderTextColor={COLORS.textLight} />
-            <InputLabel {...themed}>Remarques complémentaires (optionnel)</InputLabel>
-            <TextInput
-              style={[s.input, s.formTextArea]}
-              value={reqNotes}
-              onChangeText={setReqNotes}
-              placeholder={"Note pour la banque (optionnel)"}
-              placeholderTextColor={COLORS.textLight}
-              multiline
-              textAlignVertical="top"
-            />
-            <Pressable style={s.checkboxRow} onPress={() => setReqDeclareAccurate((x) => !x)} accessibilityRole="checkbox" accessibilityState={{ checked: reqDeclareAccurate }}>
-              <View style={[s.checkboxBox, reqDeclareAccurate && s.checkboxBoxOn]}>{reqDeclareAccurate ? <CheckCircle2 size={14} color={COLORS.white} /> : null}</View>
-              <Text style={s.checkboxLabel}>Je certifie que les informations fournies sont exactes.</Text>
-            </Pressable>
+            {estimationResult ? (
+              <Text style={[s.formHint, documents.length > 0 && { color: COLORS.success }]}>
+                {documents.length > 0
+                  ? `${documents.length} document(s) joint(s) au dossier (visible par l’administrateur).`
+                  : 'Conseil : déposez CIN / fiche de paie dans Profil avant de soumettre la demande.'}
+              </Text>
+            ) : null}
 
-            <SecondaryButton label="Soumettre la demande" onPress={onSubmitRequest} disabled={isActionBusy || !estimationResult} {...themed} />
+            <AtbCreditApplicationForm
+              form={atbForm}
+              setForm={setAtbForm}
+              user={user}
+              amount={amount}
+              durationMonths={durationMonths}
+              creditName={selectedType?.name}
+              colors={COLORS}
+              onSubmit={onSubmitRequest}
+              onDownloadPdf={() => onDownloadDemandeCredit(selectedType?.name || 'Crédit')}
+              disabled={isActionBusy || !estimationResult}
+            />
           </SectionCard>
         )}
 
@@ -2369,6 +2661,17 @@ export default function App() {
               <InputLabel {...themed}>Profession</InputLabel>
               <TextInput style={s.input} value={profileProfession} onChangeText={setProfileProfession} placeholder="Profession" placeholderTextColor={COLORS.textLight} />
 
+              <InputLabel {...themed}>Type de compte</InputLabel>
+              <View style={[s.langRow, { marginBottom: 16 }]}>
+                {['particulier', 'professionnel'].map((type) => (
+                  <Pressable key={type} style={[s.langChip, profileAccountType === type && s.langChipActive]} onPress={() => setProfileAccountType(type)}>
+                    <Text style={[s.langChipText, profileAccountType === type && s.langChipTextActive]}>
+                      {type === 'particulier' ? 'Particulier' : 'Professionnel'}
+                    </Text>
+                  </Pressable>
+                ))}
+              </View>
+
               <PrimaryButton label="Enregistrer les modifications" onPress={onSaveProfile} disabled={isActionBusy} loading={isActionBusy} {...themed} />
             </SectionCard>
 
@@ -2417,29 +2720,103 @@ export default function App() {
 
             <SectionCard {...themed}>
               <SectionTitle {...themed}>{t('profile.documents')}</SectionTitle>
-              <View style={s.docRow}>
-                {['cin', 'payslip', 'selfie', 'other'].map((type) => (
-                  <Pressable key={type} style={[s.langChip, docType === type && s.langChipActive]} onPress={() => setDocType(type)}>
-                    <Text style={[s.langChipText, docType === type && s.langChipTextActive]}>{type.toUpperCase()}</Text>
-                  </Pressable>
-                ))}
+              <Text style={s.formHint}>CIN, fiche de paie, selfie ou autre justificatif — formats image ou PDF.</Text>
+
+              <Text style={s.docSectionLabel}>Type de document</Text>
+              <View style={s.docTypeGrid}>
+                {DOC_TYPES.map(({ id, label, hint, Icon }) => {
+                  const active = docType === id;
+                  return (
+                    <Pressable
+                      key={id}
+                      style={[s.docTypeCard, active && s.docTypeCardActive]}
+                      onPress={() => setDocType(id)}
+                    >
+                      <View style={[s.docTypeIconWrap, active && { backgroundColor: COLORS.primary }]}>
+                        <Icon size={20} color={active ? COLORS.white : COLORS.primary} />
+                      </View>
+                      <Text style={[s.docTypeCardTitle, active && { color: COLORS.primary }]}>{label}</Text>
+                      <Text style={s.docTypeCardHint}>{hint}</Text>
+                    </Pressable>
+                  );
+                })}
               </View>
-              <View style={s.docActions}>
-                <SecondaryButton label="Choisir un document" onPress={onPickDocument} {...themed} />
-                <PrimaryButton label="Uploader" onPress={onUploadDocument} disabled={!docDraft} {...themed} />
-              </View>
-              {documents.length === 0 ? (
-                <EmptyState icon="📄" title="Aucun document" description="Ajoutez CIN, fiche de paie ou selfie." {...themed} />
-              ) : documents.map((doc) => (
-                <View key={doc.id} style={s.listItem}>
-                  <View style={s.listItemHead}>
-                    <Text style={s.listItemTitle}>{doc.fileName}</Text>
-                    <StatusBadge status={doc.status} {...themed} />
+
+              <Pressable style={[s.docUploadCard, docDraft && s.docUploadCardReady]} onPress={onPickDocument}>
+                {docDraft && isImageMime(docDraft.mimeType) ? (
+                  <Image source={{ uri: docDraft.dataUrl }} style={s.docPreviewImg} resizeMode="cover" />
+                ) : docDraft ? (
+                  <View style={s.docPreviewFile}>
+                    <FileText size={36} color={COLORS.primary} />
+                    <Text style={s.docPreviewFileName} numberOfLines={2}>{docDraft.fileName}</Text>
                   </View>
-                  <Text style={s.listItemSub}>{doc.type.toUpperCase()} • {doc.mimeType}</Text>
-                  <SecondaryButton label="Supprimer" onPress={() => onDeleteDocument(doc.id)} {...themed} />
+                ) : (
+                  <View style={s.docUploadPlaceholder}>
+                    <Upload size={28} color={COLORS.primary} />
+                    <Text style={s.docUploadTitle}>
+                      {Platform.OS === 'web' ? 'Cliquez pour choisir un fichier' : 'Appuyez pour ouvrir la galerie'}
+                    </Text>
+                    <Text style={s.docUploadSub}>JPG, PNG ou PDF — max ~650 Ko</Text>
+                  </View>
+                )}
+              </Pressable>
+
+              {docDraft ? (
+                <View style={s.docDraftMeta}>
+                  <Text style={s.docDraftName} numberOfLines={1}>{docDraft.fileName}</Text>
+                  <Pressable onPress={() => setDocDraft(null)} hitSlop={8}>
+                    <Text style={s.docDraftClear}>Retirer</Text>
+                  </Pressable>
                 </View>
-              ))}
+              ) : null}
+
+              <View style={s.docActions}>
+                <SecondaryButton
+                  label={Platform.OS === 'web' ? 'Choisir un fichier' : 'Choisir un document'}
+                  onPress={onPickDocument}
+                  disabled={isUploadingDoc}
+                  {...themed}
+                />
+                <PrimaryButton
+                  label="Envoyer le document"
+                  onPress={onUploadDocument}
+                  disabled={!docDraft || isUploadingDoc}
+                  loading={isUploadingDoc}
+                  {...themed}
+                />
+              </View>
+
+              <Text style={s.docSectionLabel}>Mes documents ({documents.length})</Text>
+              {documents.length === 0 ? (
+                <EmptyState icon="📄" title="Aucun document" description="Ajoutez votre CIN, fiche de paie ou selfie." {...themed} />
+              ) : documents.map((doc) => {
+                const meta = docTypeMeta(doc.type);
+                const DocIcon = meta.Icon;
+                return (
+                  <View key={doc.id} style={s.docFileCard}>
+                    <View style={s.docFileThumb}>
+                      {isImageMime(doc.mimeType) && doc.dataUrl ? (
+                        <Image source={{ uri: doc.dataUrl }} style={s.docFileThumbImg} resizeMode="cover" />
+                      ) : (
+                        <View style={s.docFileThumbPlaceholder}>
+                          <DocIcon size={22} color={COLORS.primary} />
+                        </View>
+                      )}
+                    </View>
+                    <View style={s.docFileBody}>
+                      <View style={s.listItemHead}>
+                        <Text style={s.docFileTitle} numberOfLines={1}>{meta.label}</Text>
+                        <StatusBadge status={doc.status} {...themed} />
+                      </View>
+                      <Text style={s.listItemSub} numberOfLines={1}>{doc.fileName}</Text>
+                      <Text style={s.formMeta}>{doc.mimeType}</Text>
+                    </View>
+                    <Pressable style={s.docDeleteBtn} onPress={() => onDeleteDocument(doc.id)} hitSlop={8}>
+                      <Trash2 size={18} color={COLORS.error} />
+                    </Pressable>
+                  </View>
+                );
+              })}
             </SectionCard>
 
             <SectionCard {...themed}>
@@ -2561,12 +2938,24 @@ export default function App() {
 
                 {adminSelectedRequest.applicationForm && typeof adminSelectedRequest.applicationForm === 'object' ? (
                   <>
-                    <SectionTitle {...themed}>Formulaire client</SectionTitle>
-                    <View style={[s.resultRow, { marginBottom: 4 }]}><Text style={s.resultLabel}>Téléphone</Text><Text style={s.resultValue}>{String(adminSelectedRequest.applicationForm.phone || '—')}</Text></View>
-                    <View style={[s.resultRow, { marginBottom: 4 }]}><Text style={s.resultLabel}>Ville / adresse</Text><Text style={[s.resultValue, { flex: 1.2, textAlign: 'right' }]}>{String(adminSelectedRequest.applicationForm.city || '—')}</Text></View>
-                    <View style={[s.resultRow, { marginBottom: 4 }]}><Text style={s.resultLabel}>Profession</Text><Text style={[s.resultValue, { flex: 1.2, textAlign: 'right' }]}>{String(adminSelectedRequest.applicationForm.profession || '—')}</Text></View>
-                    <View style={[s.resultRow, { marginBottom: 4, alignItems: 'flex-start' }]}><Text style={s.resultLabel}>Projet</Text><Text style={[s.resultValue, { flex: 1, textAlign: 'right', flexWrap: 'wrap' }]}>{String(adminSelectedRequest.applicationForm.projectPurpose || '—')}</Text></View>
-                    <View style={[s.resultRow, { marginBottom: 4 }]}><Text style={s.resultLabel}>Autres revenus / mois</Text><Text style={s.resultValue}>{formatMoney(adminSelectedRequest.applicationForm.monthlyOtherIncome || 0)}</Text></View>
+                    <SectionTitle {...themed}>
+                      {adminSelectedRequest.applicationForm.formType === 'atb_particuliers_v3' ? 'Formulaire ATB (DCRT/03-2016/V3)' : 'Formulaire client'}
+                    </SectionTitle>
+                    <View style={[s.resultRow, { marginBottom: 4 }]}><Text style={s.resultLabel}>Téléphone</Text><Text style={s.resultValue}>{String(adminSelectedRequest.applicationForm.phone || adminSelectedRequest.applicationForm.applicant1?.phone || '—')}</Text></View>
+                    <View style={[s.resultRow, { marginBottom: 4 }]}><Text style={s.resultLabel}>Ville / adresse</Text><Text style={[s.resultValue, { flex: 1.2, textAlign: 'right' }]}>{String(adminSelectedRequest.applicationForm.city || adminSelectedRequest.applicationForm.applicant1?.address || '—')}</Text></View>
+                    <View style={[s.resultRow, { marginBottom: 4 }]}><Text style={s.resultLabel}>Profession</Text><Text style={[s.resultValue, { flex: 1.2, textAlign: 'right' }]}>{String(adminSelectedRequest.applicationForm.profession || professionalStatusLabel(adminSelectedRequest.applicationForm.applicant1?.professionalStatus) || '—')}</Text></View>
+                    {adminSelectedRequest.applicationForm.applicant1?.idNumber ? (
+                      <View style={[s.resultRow, { marginBottom: 4 }]}><Text style={s.resultLabel}>CIN / pièce</Text><Text style={s.resultValue}>{String(adminSelectedRequest.applicationForm.applicant1.idNumber)}</Text></View>
+                    ) : null}
+                    <View style={[s.resultRow, { marginBottom: 4, alignItems: 'flex-start' }]}><Text style={s.resultLabel}>Objet crédit</Text><Text style={[s.resultValue, { flex: 1, textAlign: 'right', flexWrap: 'wrap' }]}>{String(adminSelectedRequest.applicationForm.projectPurpose || adminSelectedRequest.applicationForm.credit?.purpose || '—')}</Text></View>
+                    <View style={[s.resultRow, { marginBottom: 4 }]}><Text style={s.resultLabel}>Garanties</Text><Text style={[s.resultValue, { flex: 1.2, textAlign: 'right' }]}>{String(adminSelectedRequest.applicationForm.credit?.guarantees || '—')}</Text></View>
+                    <View style={[s.resultRow, { marginBottom: 4 }]}><Text style={s.resultLabel}>Autres revenus / mois</Text><Text style={s.resultValue}>{formatMoney(adminSelectedRequest.applicationForm.monthlyOtherIncome || adminSelectedRequest.applicationForm.applicant1?.otherIncomeAmount || 0)}</Text></View>
+                    {adminSelectedRequest.applicationForm.applicant2 ? (
+                      <View style={[s.resultRow, { marginBottom: 4 }]}><Text style={s.resultLabel}>Co-demandeur</Text><Text style={s.resultValue}>{String(adminSelectedRequest.applicationForm.applicant2.fullName || '—')}</Text></View>
+                    ) : null}
+                    {adminSelectedRequest.applicationForm.spouse ? (
+                      <View style={[s.resultRow, { marginBottom: 4 }]}><Text style={s.resultLabel}>Conjoint</Text><Text style={s.resultValue}>{String(adminSelectedRequest.applicationForm.spouse.fullName || '—')}</Text></View>
+                    ) : null}
                     {adminSelectedRequest.applicationForm.additionalNotes ? (
                       <View style={[s.resultRow, { marginBottom: 16, alignItems: 'flex-start' }]}><Text style={s.resultLabel}>Remarques</Text><Text style={[s.resultValue, { flex: 1, textAlign: 'right' }]}>{String(adminSelectedRequest.applicationForm.additionalNotes)}</Text></View>
                     ) : (
@@ -2574,6 +2963,44 @@ export default function App() {
                     )}
                   </>
                 ) : null}
+
+                <SectionTitle {...themed}>Documents client (CIN, fiche de paie…)</SectionTitle>
+                {adminDocsLoading ? (
+                  <View style={s.loadingBox}><ActivityIndicator color={COLORS.primary} /><Text style={s.loadingText}>Chargement des documents…</Text></View>
+                ) : adminRequestDocuments.length === 0 ? (
+                  <Text style={[s.formHint, { marginBottom: 16 }]}>Aucun document joint à ce dossier.</Text>
+                ) : adminRequestDocuments.map((doc) => {
+                  const meta = docTypeMeta(doc.type);
+                  const DocIcon = meta.Icon;
+                  return (
+                    <View key={doc.id} style={[s.docFileCard, { marginBottom: 10, flexDirection: 'column', alignItems: 'stretch' }]}>
+                      <View style={{ flexDirection: 'row', alignItems: 'center', gap: SPACING.md }}>
+                        <View style={s.docFileThumb}>
+                          {isImageMime(doc.mimeType) && doc.dataUrl ? (
+                            <Image source={{ uri: doc.dataUrl }} style={s.docFileThumbImg} resizeMode="cover" />
+                          ) : (
+                            <View style={s.docFileThumbPlaceholder}>
+                              <DocIcon size={22} color={COLORS.primary} />
+                            </View>
+                          )}
+                        </View>
+                        <View style={{ flex: 1, minWidth: 0 }}>
+                          <View style={s.listItemHead}>
+                            <Text style={s.docFileTitle}>{meta.label}</Text>
+                            <StatusBadge status={doc.status} {...themed} />
+                          </View>
+                          <Text style={s.listItemSub} numberOfLines={1}>{doc.fileName}</Text>
+                          <Text style={s.formMeta}>{doc.mimeType}</Text>
+                        </View>
+                      </View>
+                      {isImageMime(doc.mimeType) && doc.dataUrl ? (
+                        <Image source={{ uri: doc.dataUrl }} style={s.adminDocPreview} resizeMode="contain" />
+                      ) : doc.dataUrl && doc.mimeType === 'application/pdf' ? (
+                        <Text style={s.formHint}>PDF enregistré — ouvrir depuis le fichier client si besoin.</Text>
+                      ) : null}
+                    </View>
+                  );
+                })}
 
                 <SectionTitle {...themed}>Scoring et Décision</SectionTitle>
                 <View style={[s.resultRow, { marginBottom: 16 }]}>
@@ -2612,139 +3039,255 @@ export default function App() {
 
 // ─── STYLES ───
 function createStyles(COLORS) {
+  const SHADOW = createShadows(COLORS);
   return StyleSheet.create({
   safe: { flex: 1, backgroundColor: COLORS.background },
   // Splash
   splash: { flex: 1 },
   splashGrad: { flex: 1, alignItems: 'center', justifyContent: 'center' },
-  splashLogo: { width: 80, height: 80, borderRadius: 20, marginBottom: 16 },
-  splashTitle: { fontFamily: FONTS.extraBold, fontSize: 36, color: COLORS.white, letterSpacing: 1 },
-  splashSub: { fontFamily: FONTS.medium, fontSize: 14, color: 'rgba(255,255,255,0.7)' },
+  splashLogo: { width: 84, height: 84, borderRadius: RADIUS.lg, marginBottom: SPACING.lg, borderWidth: 2, borderColor: 'rgba(255,255,255,0.2)' },
+  splashTitle: { fontFamily: FONTS.extraBold, fontSize: 34, color: COLORS.white, letterSpacing: 2, textTransform: 'uppercase' },
+  splashSub: { fontFamily: FONTS.medium, ...TYPO.body, color: 'rgba(255,255,255,0.72)', marginTop: 4 },
   // Auth
-  authWrap: { flexGrow: 1, justifyContent: 'center', padding: SPACING.xl, gap: SPACING.xl },
-  authHeader: { alignItems: 'center', gap: 8 },
-  authLogo: { width: 70, height: 70, borderRadius: 18 },
-  authTitle: { fontFamily: FONTS.extraBold, fontSize: 32, color: COLORS.primary },
-  authSubtitle: { fontFamily: FONTS.medium, fontSize: 14, color: COLORS.textSecondary },
-  authCard: { backgroundColor: COLORS.white, borderRadius: RADIUS.xl, padding: SPACING.xl, gap: SPACING.md, ...SHADOW.card },
-  authToggle: { flexDirection: 'row', backgroundColor: COLORS.surfaceAlt, borderRadius: RADIUS.md, padding: 4, gap: 4 },
-  authToggleBtn: { flex: 1, borderRadius: RADIUS.sm, paddingVertical: 10, alignItems: 'center' },
-  authToggleBtnActive: { backgroundColor: COLORS.primary, ...SHADOW.elevated },
-  authToggleText: { fontFamily: FONTS.bold, color: COLORS.textSecondary, fontSize: 14 },
+  authWrap: { flexGrow: 1, justifyContent: 'center', padding: SPACING.xxl, gap: SPACING.xxl },
+  authHeader: { alignItems: 'center', gap: 10 },
+  authLogo: { width: 72, height: 72, borderRadius: RADIUS.lg },
+  authTitle: { fontFamily: FONTS.extraBold, fontSize: 30, color: COLORS.secondary, letterSpacing: -0.5 },
+  authSubtitle: { fontFamily: FONTS.medium, ...TYPO.small, color: COLORS.textSecondary },
+  authCard: {
+    backgroundColor: COLORS.surface,
+    borderRadius: RADIUS.xl,
+    padding: SPACING.xxl,
+    gap: SPACING.lg,
+    borderWidth: 1,
+    borderColor: COLORS.borderLight,
+    ...SHADOW.card,
+  },
+  authToggle: { flexDirection: 'row', backgroundColor: COLORS.surfaceAlt, borderRadius: RADIUS.md, padding: 3, gap: 3, borderWidth: 1, borderColor: COLORS.borderLight },
+  authToggleBtn: { flex: 1, borderRadius: RADIUS.sm, paddingVertical: 11, alignItems: 'center' },
+  authToggleBtnActive: { backgroundColor: COLORS.primary, ...SHADOW.soft },
+  authToggleText: { fontFamily: FONTS.semiBold, color: COLORS.textSecondary, ...TYPO.body },
   authToggleTextActive: { color: COLORS.white },
   rowInputs: { flexDirection: 'row', gap: SPACING.sm, flexWrap: 'wrap' },
-  passwordField: { flexDirection: 'row', alignItems: 'center', borderWidth: 1, borderColor: COLORS.border, borderRadius: RADIUS.md, backgroundColor: COLORS.surface, minHeight: 48 },
-  passwordInput: { flex: 1, paddingHorizontal: 14, paddingVertical: 13, fontFamily: FONTS.medium, fontSize: 14, color: COLORS.text, minWidth: 0 },
-  passwordReveal: { paddingHorizontal: 10, justifyContent: 'center', alignItems: 'center', alignSelf: 'stretch' },
-  input: { borderWidth: 1, borderColor: COLORS.border, borderRadius: RADIUS.md, paddingHorizontal: 14, paddingVertical: 13, backgroundColor: COLORS.surface, color: COLORS.text, fontFamily: FONTS.medium, fontSize: 14 },
-  helper: { fontSize: 11, color: COLORS.textLight, fontFamily: FONTS.regular, textAlign: 'center', lineHeight: 17 },
+  passwordField: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    borderRadius: RADIUS.md,
+    backgroundColor: COLORS.inputFill,
+    minHeight: 50,
+  },
+  passwordInput: { flex: 1, paddingHorizontal: 14, paddingVertical: 13, fontFamily: FONTS.medium, ...TYPO.body, color: COLORS.text, minWidth: 0 },
+  passwordReveal: { paddingHorizontal: 12, justifyContent: 'center', alignItems: 'center', alignSelf: 'stretch' },
+  input: {
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    borderRadius: RADIUS.md,
+    paddingHorizontal: 14,
+    paddingVertical: 13,
+    backgroundColor: COLORS.inputFill,
+    color: COLORS.text,
+    fontFamily: FONTS.medium,
+    ...TYPO.body,
+    minHeight: 50,
+  },
+  helper: { ...TYPO.caption, color: COLORS.textLight, fontFamily: FONTS.regular, textAlign: 'center' },
   // Header
-  header: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: SPACING.lg, paddingVertical: SPACING.md, backgroundColor: COLORS.white, borderBottomWidth: 1, borderBottomColor: COLORS.borderLight },
+  header: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingHorizontal: SPACING.lg,
+    paddingVertical: SPACING.md,
+    backgroundColor: COLORS.surface,
+    borderBottomWidth: 1,
+    borderBottomColor: COLORS.borderLight,
+    ...SHADOW.soft,
+  },
   headerCompact: { paddingHorizontal: SPACING.md },
   headerLeft: { flexDirection: 'row', alignItems: 'center', gap: 10, flexShrink: 1 },
-  headerLogo: { width: 34, height: 34, borderRadius: 10 },
-  headerUserAvatar: { width: 36, height: 36, borderRadius: 18, borderWidth: 1, borderColor: COLORS.borderLight, backgroundColor: COLORS.surfaceAlt },
-  headerGreet: { fontFamily: FONTS.medium, fontSize: 12, color: COLORS.textSecondary },
-  headerName: { fontFamily: FONTS.bold, fontSize: 16, color: COLORS.text },
-  headerRight: { flexDirection: 'row', gap: 6 },
-  headerIconBtn: { width: 38, height: 38, borderRadius: 12, backgroundColor: COLORS.surfaceAlt, alignItems: 'center', justifyContent: 'center', position: 'relative' },
+  headerLogo: { width: 36, height: 36, borderRadius: RADIUS.sm },
+  headerUserAvatar: { width: 38, height: 38, borderRadius: 19, borderWidth: 2, borderColor: COLORS.borderLight, backgroundColor: COLORS.surfaceAlt },
+  headerGreet: { fontFamily: FONTS.medium, ...TYPO.caption, color: COLORS.textSecondary, letterSpacing: 0.4, textTransform: 'uppercase' },
+  headerName: { fontFamily: FONTS.bold, ...TYPO.subtitle, color: COLORS.text },
+  headerRight: { flexDirection: 'row', gap: 8 },
+  headerIconBtn: {
+    width: 40,
+    height: 40,
+    borderRadius: RADIUS.md,
+    backgroundColor: COLORS.surfaceAlt,
+    borderWidth: 1,
+    borderColor: COLORS.borderLight,
+    alignItems: 'center',
+    justifyContent: 'center',
+    position: 'relative',
+  },
   // Body
   body: { flex: 1 },
-  bodyContent: { padding: SPACING.lg, gap: SPACING.md, paddingBottom: 24, width: '100%', maxWidth: 980, alignSelf: 'center' },
+  bodyContent: { padding: SPACING.lg, gap: SPACING.lg, paddingBottom: SPACING.xxl, width: '100%', maxWidth: 980, alignSelf: 'center' },
   // Notices
-  noticeBanner: { flexDirection: 'row', alignItems: 'center', gap: 8, backgroundColor: COLORS.successBg, borderRadius: RADIUS.md, padding: SPACING.md },
-  noticeText: { color: COLORS.success, fontFamily: FONTS.semiBold, fontSize: 13, flex: 1 },
-  errorBanner: { flexDirection: 'row', alignItems: 'center', gap: 8, backgroundColor: COLORS.errorBg, borderRadius: RADIUS.md, padding: SPACING.md },
-  errorText: { color: COLORS.error, fontFamily: FONTS.semiBold, fontSize: 13, flex: 1 },
-  loadingBox: { alignItems: 'center', gap: 8, padding: SPACING.xl },
-  loadingText: { fontFamily: FONTS.semiBold, color: COLORS.primary, fontSize: 13 },
+  noticeBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    backgroundColor: COLORS.successBg,
+    borderRadius: RADIUS.md,
+    padding: SPACING.md,
+    borderWidth: 1,
+    borderColor: COLORS.success + '30',
+  },
+  noticeText: { color: COLORS.success, fontFamily: FONTS.semiBold, ...TYPO.small, flex: 1 },
+  errorBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    backgroundColor: COLORS.errorBg,
+    borderRadius: RADIUS.md,
+    padding: SPACING.md,
+    borderWidth: 1,
+    borderColor: COLORS.error + '30',
+  },
+  errorText: { color: COLORS.error, fontFamily: FONTS.semiBold, ...TYPO.small, flex: 1 },
+  loadingBox: { alignItems: 'center', gap: 10, padding: SPACING.xxl },
+  loadingText: { fontFamily: FONTS.semiBold, color: COLORS.primary, ...TYPO.small, letterSpacing: 0.3 },
   // Balance card
-  balanceCard: { borderRadius: RADIUS.xl, padding: SPACING.xl, overflow: 'hidden', ...SHADOW.elevated },
+  balanceCard: { borderRadius: RADIUS.xl, padding: SPACING.xxl, overflow: 'hidden', ...SHADOW.elevated },
   balanceTop: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
-  balanceLabel: { fontFamily: FONTS.medium, fontSize: 13, color: 'rgba(255,255,255,0.75)' },
-  balanceAmount: { fontFamily: FONTS.extraBold, fontSize: 32, color: COLORS.white, marginTop: 8 },
-  balanceBottom: { marginTop: 12 },
-  balanceSalary: { fontFamily: FONTS.medium, fontSize: 13, color: 'rgba(255,255,255,0.6)' },
-  balanceDecor: { position: 'absolute', top: -40, right: -40, width: 140, height: 140, borderRadius: 70, backgroundColor: 'rgba(255,255,255,0.08)' },
-  balanceDecor2: { position: 'absolute', bottom: -50, left: -30, width: 120, height: 120, borderRadius: 60, backgroundColor: 'rgba(255,255,255,0.05)' },
+  balanceLabel: { fontFamily: FONTS.medium, ...TYPO.small, color: 'rgba(255,255,255,0.78)', letterSpacing: 0.5, textTransform: 'uppercase' },
+  balanceAmount: { fontFamily: FONTS.extraBold, fontSize: 34, color: COLORS.white, marginTop: 10, letterSpacing: -0.5 },
+  balanceBottom: { marginTop: 14, paddingTop: 12, borderTopWidth: 1, borderTopColor: 'rgba(255,255,255,0.15)' },
+  balanceSalary: { fontFamily: FONTS.medium, ...TYPO.small, color: 'rgba(255,255,255,0.65)' },
+  balanceDecor: { position: 'absolute', top: -50, right: -50, width: 160, height: 160, borderRadius: 80, backgroundColor: 'rgba(255,255,255,0.07)' },
+  balanceDecor2: { position: 'absolute', bottom: -60, left: -40, width: 130, height: 130, borderRadius: 65, backgroundColor: 'rgba(255,255,255,0.04)' },
   // KPI
   kpiRow: { flexDirection: 'row', gap: SPACING.md, flexWrap: 'wrap' },
   // List items
-  listItem: { borderWidth: 1, borderColor: COLORS.borderLight, borderRadius: RADIUS.md, padding: SPACING.md, gap: 4, backgroundColor: COLORS.surface },
+  listItem: {
+    borderWidth: 1,
+    borderColor: COLORS.borderLight,
+    borderRadius: RADIUS.lg,
+    padding: SPACING.lg,
+    gap: 6,
+    backgroundColor: COLORS.surface,
+    borderLeftWidth: 3,
+    borderLeftColor: COLORS.primaryMuted,
+  },
   listItemHead: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', gap: 8 },
-  listItemTitle: { fontFamily: FONTS.bold, color: COLORS.text, fontSize: 14, flexShrink: 1 },
-  listItemSub: { fontFamily: FONTS.regular, color: COLORS.textSecondary, fontSize: 13, lineHeight: 19 },
+  listItemTitle: { fontFamily: FONTS.bold, color: COLORS.text, ...TYPO.body, flexShrink: 1 },
+  listItemSub: { fontFamily: FONTS.regular, color: COLORS.textSecondary, ...TYPO.small },
   // Credit types
   creditFilters: { gap: 10, marginBottom: 4 },
   creditSearchInput: { flexDirection: 'row', alignItems: 'center', gap: 8 },
-  creditSearchText: { flex: 1, fontFamily: FONTS.medium, fontSize: 14, color: COLORS.text },
-  creditType: { borderWidth: 1.5, borderColor: COLORS.border, borderRadius: RADIUS.lg, padding: SPACING.lg, gap: 4, backgroundColor: COLORS.surface },
-  creditTypeActive: { borderColor: COLORS.primary, backgroundColor: COLORS.primary + '08' },
-  rateTag: { backgroundColor: COLORS.primary + '12', borderRadius: RADIUS.full, paddingHorizontal: 10, paddingVertical: 4 },
-  rateTagText: { fontFamily: FONTS.bold, fontSize: 12, color: COLORS.primary },
+  creditSearchText: { flex: 1, fontFamily: FONTS.medium, ...TYPO.body, color: COLORS.text },
+  creditType: {
+    borderWidth: 1.5,
+    borderColor: COLORS.border,
+    borderRadius: RADIUS.lg,
+    padding: SPACING.lg,
+    gap: 6,
+    backgroundColor: COLORS.surface,
+  },
+  creditTypeActive: { borderColor: COLORS.primary, backgroundColor: COLORS.primaryMuted, borderWidth: 2 },
+  rateTag: { backgroundColor: COLORS.primaryMuted, borderRadius: RADIUS.full, paddingHorizontal: 10, paddingVertical: 5, borderWidth: 1, borderColor: COLORS.primary + '20' },
+  rateTagText: { fontFamily: FONTS.bold, ...TYPO.small, color: COLORS.primary },
   checkMark: { position: 'absolute', top: 12, right: 12 },
   // Simulation
-  chipRow: { flexDirection: 'row', alignItems: 'center', gap: 8, backgroundColor: COLORS.surfaceAlt, borderRadius: RADIUS.sm, padding: SPACING.sm },
-  chipText: { fontFamily: FONTS.semiBold, fontSize: 13, color: COLORS.primary },
+  chipRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    backgroundColor: COLORS.surfaceAlt,
+    borderRadius: RADIUS.md,
+    padding: SPACING.md,
+    borderWidth: 1,
+    borderColor: COLORS.borderLight,
+  },
+  chipText: { fontFamily: FONTS.semiBold, ...TYPO.small, color: COLORS.primary },
   presetRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
-  presetChip: { borderWidth: 1, borderColor: COLORS.border, borderRadius: RADIUS.full, paddingHorizontal: 12, paddingVertical: 6, backgroundColor: COLORS.surfaceAlt },
-  presetChipText: { fontFamily: FONTS.semiBold, fontSize: 12, color: COLORS.textSecondary },
-  formHint: { fontFamily: FONTS.medium, fontSize: 12, color: COLORS.textSecondary, lineHeight: 18 },
-  formMuted: { fontFamily: FONTS.medium, fontSize: 13, color: COLORS.warning, marginTop: -4 },
-  formTextArea: { minHeight: 88, paddingTop: 12 },
-  formMeta: { fontFamily: FONTS.medium, fontSize: 12, color: COLORS.primary },
-  checkboxRow: { flexDirection: 'row', alignItems: 'flex-start', gap: 12, paddingVertical: 4 },
+  presetChip: {
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    borderRadius: RADIUS.full,
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+    backgroundColor: COLORS.surfaceAlt,
+  },
+  presetChipText: { fontFamily: FONTS.semiBold, ...TYPO.small, color: COLORS.textSecondary },
+  formHint: { fontFamily: FONTS.regular, ...TYPO.small, color: COLORS.textSecondary },
+  formMuted: { fontFamily: FONTS.medium, ...TYPO.small, color: COLORS.warning, marginTop: -4 },
+  formTextArea: { minHeight: 96, paddingTop: 12, textAlignVertical: 'top' },
+  formMeta: { fontFamily: FONTS.semiBold, ...TYPO.caption, color: COLORS.primary, letterSpacing: 0.3 },
+  checkboxRow: { flexDirection: 'row', alignItems: 'flex-start', gap: 12, paddingVertical: 6 },
   checkboxBox: {
     width: 22,
     height: 22,
-    borderRadius: 6,
+    borderRadius: RADIUS.xs,
     borderWidth: 2,
     borderColor: COLORS.border,
-    backgroundColor: COLORS.surface,
+    backgroundColor: COLORS.inputFill,
     alignItems: 'center',
     justifyContent: 'center',
     marginTop: 2,
   },
   checkboxBoxOn: { backgroundColor: COLORS.primary, borderColor: COLORS.primary },
-  checkboxLabel: { flex: 1, fontFamily: FONTS.medium, fontSize: 13, color: COLORS.text, lineHeight: 20 },
-  resultCard: { backgroundColor: COLORS.surfaceAlt, borderRadius: RADIUS.md, padding: SPACING.lg, gap: 10, marginTop: 8 },
-  resultTitle: { fontFamily: FONTS.bold, fontSize: 15, color: COLORS.text, marginBottom: 4 },
-  resultRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
-  resultLabel: { fontFamily: FONTS.medium, fontSize: 13, color: COLORS.textSecondary },
-  resultValue: { fontFamily: FONTS.bold, fontSize: 15, color: COLORS.text },
-  scoreWrap: { gap: 8, marginTop: 4 },
+  checkboxLabel: { flex: 1, fontFamily: FONTS.medium, ...TYPO.small, color: COLORS.text },
+  resultCard: {
+    backgroundColor: COLORS.surfaceAlt,
+    borderRadius: RADIUS.lg,
+    padding: SPACING.lg,
+    gap: 12,
+    marginTop: 8,
+    borderWidth: 1,
+    borderColor: COLORS.borderLight,
+  },
+  resultTitle: { fontFamily: FONTS.bold, ...TYPO.subtitle, color: COLORS.text, marginBottom: 4 },
+  resultRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingVertical: 2 },
+  resultLabel: { fontFamily: FONTS.medium, ...TYPO.small, color: COLORS.textSecondary },
+  resultValue: { fontFamily: FONTS.bold, ...TYPO.subtitle, color: COLORS.text },
+  scoreWrap: { gap: 8, marginTop: 6 },
   scoreHead: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
-  scoreLabel: { fontFamily: FONTS.bold, fontSize: 13 },
-  scoreTrack: { width: '100%', height: 8, borderRadius: RADIUS.full, backgroundColor: COLORS.border, overflow: 'hidden' },
+  scoreLabel: { fontFamily: FONTS.bold, ...TYPO.small },
+  scoreTrack: { width: '100%', height: 6, borderRadius: RADIUS.full, backgroundColor: COLORS.border, overflow: 'hidden' },
   scoreFill: { height: '100%', borderRadius: RADIUS.full },
   // Chat
-  chatHeader: { flexDirection: 'row', alignItems: 'center', gap: 8 },
-  chatZone: { minHeight: 200, gap: 4 },
-  chatInputRow: { flexDirection: 'row', gap: 8, alignItems: 'center' },
-  chatInput: { flex: 1, borderWidth: 1, borderColor: COLORS.border, borderRadius: RADIUS.full, paddingHorizontal: 16, paddingVertical: 12, backgroundColor: COLORS.surface, fontFamily: FONTS.medium, fontSize: 14, color: COLORS.text },
-  chatSendBtn: { width: 44, height: 44, borderRadius: 22, backgroundColor: COLORS.primary, alignItems: 'center', justifyContent: 'center', ...SHADOW.elevated },
-  // Pro
-  proLead: { fontFamily: FONTS.regular, color: COLORS.textSecondary, fontSize: 13, lineHeight: 20 },
-  proCard: { borderWidth: 1, borderColor: COLORS.borderLight, borderRadius: RADIUS.md, padding: SPACING.md, gap: 4, backgroundColor: COLORS.surfaceAlt },
-  recoCard: { borderWidth: 1, borderColor: COLORS.border, borderRadius: RADIUS.md, padding: SPACING.md, gap: 8, backgroundColor: COLORS.surface },
-  recoRate: { fontFamily: FONTS.bold, fontSize: 14, color: COLORS.primary },
-  proFeatureItem: { flexDirection: 'row', alignItems: 'center', gap: 8, backgroundColor: COLORS.surfaceAlt, borderRadius: RADIUS.sm, padding: SPACING.sm },
-  proFeatureText: { flex: 1, fontFamily: FONTS.medium, fontSize: 13, color: COLORS.text },
-  quickActionRow: { gap: 10 },
-  stepItem: { flexDirection: 'row', alignItems: 'center', gap: 10, paddingVertical: 4 },
-  stepDot: { width: 10, height: 10, borderRadius: RADIUS.full },
-  stepText: { fontFamily: FONTS.medium, fontSize: 13, color: COLORS.textSecondary },
+  chatHeader: { flexDirection: 'row', alignItems: 'center', gap: 10, paddingBottom: 4 },
+  chatZone: { minHeight: 220, gap: 4, paddingVertical: 4 },
+  chatInputRow: { flexDirection: 'row', gap: 10, alignItems: 'center', marginTop: 4 },
+  chatInput: {
+    flex: 1,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    borderRadius: RADIUS.full,
+    paddingHorizontal: 18,
+    paddingVertical: 13,
+    backgroundColor: COLORS.inputFill,
+    fontFamily: FONTS.medium,
+    ...TYPO.body,
+    color: COLORS.text,
+  },
+  chatSendBtn: {
+    width: 46,
+    height: 46,
+    borderRadius: 23,
+    backgroundColor: COLORS.primary,
+    alignItems: 'center',
+    justifyContent: 'center',
+    ...SHADOW.elevated,
+  },
+  proLead: { fontFamily: FONTS.regular, color: COLORS.textSecondary, ...TYPO.body },
+  quickActionRow: { gap: SPACING.md, marginTop: SPACING.sm },
   // Admin layout + sidebar
   adminLayout: { flex: 1, flexDirection: 'row' },
   adminSidebarRail: {
-    width: 224,
-    paddingTop: SPACING.md,
+    width: 232,
+    paddingTop: SPACING.lg,
     paddingHorizontal: SPACING.sm,
     paddingBottom: SPACING.lg,
-    backgroundColor: COLORS.white,
+    backgroundColor: COLORS.surface,
     borderRightWidth: 1,
     borderRightColor: COLORS.borderLight,
-    gap: 6,
+    gap: 4,
   },
   adminSidebarDrawer: {
     flex: undefined,
@@ -2755,90 +3298,280 @@ function createStyles(COLORS) {
     borderBottomLeftRadius: 0,
     borderTopLeftRadius: 0,
   },
-  adminSidebarTitle: { fontFamily: FONTS.extraBold, fontSize: 15, color: COLORS.primaryDark, marginBottom: SPACING.sm, paddingHorizontal: SPACING.sm },
+  adminSidebarTitle: {
+    fontFamily: FONTS.extraBold,
+    ...TYPO.subtitle,
+    color: COLORS.primaryDark,
+    marginBottom: SPACING.md,
+    paddingHorizontal: SPACING.sm,
+    letterSpacing: 0.5,
+    textTransform: 'uppercase',
+  },
   adminNavBtn: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 10,
     paddingVertical: 12,
-    paddingHorizontal: SPACING.sm,
+    paddingHorizontal: SPACING.md,
     borderRadius: RADIUS.md,
-    backgroundColor: COLORS.surfaceAlt,
+    backgroundColor: 'transparent',
+    borderWidth: 1,
+    borderColor: 'transparent',
   },
-  adminNavBtnActive: { backgroundColor: COLORS.primary },
-  adminNavBtnText: { fontFamily: FONTS.semiBold, fontSize: 14, color: COLORS.text },
+  adminNavBtnActive: { backgroundColor: COLORS.primary, borderColor: COLORS.primary, ...SHADOW.soft },
+  adminNavBtnText: { fontFamily: FONTS.semiBold, ...TYPO.body, color: COLORS.text },
   adminNavBtnTextActive: { color: COLORS.white },
   adminDrawerRoot: { flex: 1, flexDirection: 'row' },
-  adminDrawerScrim: { flex: 1, backgroundColor: 'rgba(0,0,0,0.45)' },
+  adminDrawerScrim: { flex: 1, backgroundColor: COLORS.overlay },
   adminDrawerHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: SPACING.sm, paddingHorizontal: SPACING.sm },
-  profileAvatarRow: { flexDirection: 'row', alignItems: 'center', gap: SPACING.md, marginVertical: SPACING.md },
-  profileAvatarTouch: { borderRadius: RADIUS.full, overflow: 'hidden' },
-  profileAvatarImg: { width: 88, height: 88, borderRadius: RADIUS.full, backgroundColor: COLORS.surfaceAlt },
-  profileAvatarPlaceholder: { alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: COLORS.border },
-  profileEmail: { fontFamily: FONTS.medium, fontSize: 14, color: COLORS.textSecondary, marginBottom: SPACING.sm },
+  profileAvatarRow: { flexDirection: 'row', alignItems: 'center', gap: SPACING.lg, marginVertical: SPACING.lg },
+  profileAvatarTouch: { borderRadius: RADIUS.full, overflow: 'hidden', borderWidth: 3, borderColor: COLORS.borderLight },
+  profileAvatarImg: { width: 92, height: 92, borderRadius: 46, backgroundColor: COLORS.surfaceAlt },
+  profileAvatarPlaceholder: { alignItems: 'center', justifyContent: 'center', backgroundColor: COLORS.surfaceAlt },
+  profileEmail: { fontFamily: FONTS.medium, ...TYPO.body, color: COLORS.textSecondary, marginBottom: SPACING.sm },
   adminGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: SPACING.md },
   adminActions: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 8 },
-  adminBtn: { borderRadius: RADIUS.sm, paddingVertical: 8, paddingHorizontal: 12 },
-  adminBtnText: { color: COLORS.white, fontFamily: FONTS.bold, fontSize: 12 },
-  roleBadge: { borderRadius: RADIUS.full, paddingHorizontal: 10, paddingVertical: 5 },
-  roleBadgeAdmin: { backgroundColor: COLORS.primary + '12' },
-  roleBadgeClient: { backgroundColor: COLORS.successBg },
-  roleBadgeText: { fontFamily: FONTS.bold, fontSize: 11 },
+  adminBtn: { borderRadius: RADIUS.sm, paddingVertical: 9, paddingHorizontal: 14 },
+  adminBtnText: { color: COLORS.white, fontFamily: FONTS.bold, ...TYPO.caption, letterSpacing: 0.3 },
+  roleBadge: { borderRadius: RADIUS.full, paddingHorizontal: 10, paddingVertical: 5, borderWidth: 1 },
+  roleBadgeAdmin: { backgroundColor: COLORS.primaryMuted, borderColor: COLORS.primary + '25' },
+  roleBadgeClient: { backgroundColor: COLORS.successBg, borderColor: COLORS.success + '25' },
+  roleBadgeText: { fontFamily: FONTS.bold, ...TYPO.caption, letterSpacing: 0.4, textTransform: 'uppercase' },
   roleBadgeTextAdmin: { color: COLORS.primary },
   roleBadgeTextClient: { color: COLORS.success },
-  modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'center', alignItems: 'center' },
-  modalContent: { backgroundColor: COLORS.white, width: '90%', maxWidth: 500, borderRadius: RADIUS.xl, overflow: 'hidden' },
-  modalContentCompact: { width: '96%' },
-  modalHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', padding: SPACING.lg, borderBottomWidth: 1, borderColor: COLORS.border },
-  modalTitle: { fontFamily: FONTS.bold, fontSize: 18, color: COLORS.primaryDark },
-  filterChip: { paddingHorizontal: 16, paddingVertical: 8, borderRadius: 20, backgroundColor: COLORS.surface, borderWidth: 1, borderColor: COLORS.border },
+  modalOverlay: { flex: 1, backgroundColor: COLORS.overlay, justifyContent: 'center', alignItems: 'center', padding: SPACING.lg },
+  modalContent: {
+    backgroundColor: COLORS.surface,
+    width: '100%',
+    maxWidth: 500,
+    borderRadius: RADIUS.xl,
+    overflow: 'hidden',
+    borderWidth: 1,
+    borderColor: COLORS.borderLight,
+    ...SHADOW.elevated,
+  },
+  modalContentCompact: { width: '100%' },
+  modalHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    padding: SPACING.lg,
+    borderBottomWidth: 1,
+    borderColor: COLORS.borderLight,
+    backgroundColor: COLORS.surfaceAlt,
+  },
+  modalTitle: { fontFamily: FONTS.bold, ...TYPO.headline, color: COLORS.secondary, letterSpacing: -0.3 },
+  filterChip: {
+    paddingHorizontal: 16,
+    paddingVertical: 9,
+    borderRadius: RADIUS.full,
+    backgroundColor: COLORS.surface,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+  },
   filterChipActive: { backgroundColor: COLORS.primary, borderColor: COLORS.primary },
-  filterChipText: { fontFamily: FONTS.medium, fontSize: 13, color: COLORS.textLight },
-  filterChipTextActive: { color: COLORS.white },
+  filterChipText: { fontFamily: FONTS.medium, ...TYPO.small, color: COLORS.textLight },
+  filterChipTextActive: { color: COLORS.white, fontFamily: FONTS.bold },
   // Notifications
-  notifyBadge: { position: 'absolute', top: 4, right: 4, backgroundColor: COLORS.error, borderRadius: 10, paddingHorizontal: 5, paddingVertical: 1 },
+  notifyBadge: {
+    position: 'absolute',
+    top: 2,
+    right: 2,
+    backgroundColor: COLORS.error,
+    borderRadius: 10,
+    minWidth: 18,
+    height: 18,
+    paddingHorizontal: 4,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 2,
+    borderColor: COLORS.surface,
+  },
   notifyBadgeText: { color: COLORS.white, fontSize: 10, fontFamily: FONTS.bold },
   notifyActions: { marginBottom: 10 },
-  notifyItem: { borderWidth: 1, borderColor: COLORS.borderLight, borderRadius: RADIUS.md, padding: SPACING.md, gap: 6, backgroundColor: COLORS.surface },
-  notifyItemUnread: { borderColor: COLORS.primary, backgroundColor: COLORS.primary + '08' },
+  notifyItem: {
+    borderWidth: 1,
+    borderColor: COLORS.borderLight,
+    borderRadius: RADIUS.lg,
+    padding: SPACING.lg,
+    gap: 6,
+    backgroundColor: COLORS.surface,
+  },
+  notifyItemUnread: { borderColor: COLORS.primary, backgroundColor: COLORS.primaryMuted, borderLeftWidth: 3, borderLeftColor: COLORS.primary },
   notifyItemHead: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
-  notifyItemTitle: { fontFamily: FONTS.bold, color: COLORS.text, fontSize: 14 },
-  notifyTypeTag: { fontFamily: FONTS.semiBold, fontSize: 11, color: COLORS.primary },
-  notifyItemText: { fontFamily: FONTS.regular, color: COLORS.textSecondary, fontSize: 13, lineHeight: 18 },
+  notifyItemTitle: { fontFamily: FONTS.bold, color: COLORS.text, ...TYPO.body },
+  notifyTypeTag: { fontFamily: FONTS.semiBold, ...TYPO.caption, color: COLORS.primary, letterSpacing: 0.4, textTransform: 'uppercase' },
+  notifyItemText: { fontFamily: FONTS.regular, color: COLORS.textSecondary, ...TYPO.small },
   notifyDot: { width: 8, height: 8, borderRadius: 4, backgroundColor: COLORS.primary },
   // Request progress
-  requestProgressTrack: { width: '100%', height: 6, borderRadius: 4, backgroundColor: COLORS.borderLight, overflow: 'hidden', marginTop: 6 },
-  requestProgressFill: { height: '100%', backgroundColor: COLORS.primary, borderRadius: 4 },
+  requestProgressTrack: { width: '100%', height: 4, borderRadius: 2, backgroundColor: COLORS.borderLight, overflow: 'hidden', marginTop: 8 },
+  requestProgressFill: { height: '100%', backgroundColor: COLORS.primary, borderRadius: 2 },
   // Simulation actions
-  simActionRow: { gap: 10, marginTop: 8 },
-  amortWrap: { marginTop: 12, gap: 8 },
+  simActionRow: { gap: SPACING.md, marginTop: SPACING.md },
+  amortWrap: { marginTop: SPACING.md, gap: 8 },
   amortToggle: { paddingVertical: 8 },
-  amortToggleText: { fontFamily: FONTS.semiBold, color: COLORS.primary },
+  amortToggleText: { fontFamily: FONTS.semiBold, ...TYPO.small, color: COLORS.primary },
   amortTable: { gap: 6 },
-  amortRow: { flexDirection: 'row', justifyContent: 'space-between', gap: 8, backgroundColor: COLORS.surfaceAlt, padding: 8, borderRadius: RADIUS.sm },
-  amortCell: { fontFamily: FONTS.medium, fontSize: 12, color: COLORS.text },
+  amortRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    gap: 8,
+    backgroundColor: COLORS.surfaceAlt,
+    padding: 10,
+    borderRadius: RADIUS.sm,
+    borderWidth: 1,
+    borderColor: COLORS.borderLight,
+  },
+  amortCell: { fontFamily: FONTS.medium, ...TYPO.caption, color: COLORS.text },
   // Settings
-  settingRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingVertical: 10 },
-  settingLeft: { flexDirection: 'row', alignItems: 'center', gap: 10 },
-  settingLabel: { fontFamily: FONTS.semiBold, color: COLORS.text },
+  settingRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingVertical: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: COLORS.borderLight,
+  },
+  settingLeft: { flexDirection: 'row', alignItems: 'center', gap: 12 },
+  settingLabel: { fontFamily: FONTS.semiBold, ...TYPO.body, color: COLORS.text },
   toggle: { width: 52, height: 28, borderRadius: 14, backgroundColor: COLORS.borderLight, padding: 3 },
   toggleOn: { backgroundColor: COLORS.primary },
-  toggleKnob: { width: 22, height: 22, borderRadius: 11, backgroundColor: COLORS.white },
+  toggleKnob: { width: 22, height: 22, borderRadius: 11, backgroundColor: COLORS.white, ...SHADOW.soft },
   toggleKnobOn: { alignSelf: 'flex-end' },
-  langRow: { flexDirection: 'row', gap: 6 },
-  langChip: { borderWidth: 1, borderColor: COLORS.border, borderRadius: 18, paddingHorizontal: 10, paddingVertical: 6, backgroundColor: COLORS.surfaceAlt },
+  langRow: { flexDirection: 'row', gap: 8 },
+  langChip: {
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    borderRadius: RADIUS.full,
+    paddingHorizontal: 12,
+    paddingVertical: 7,
+    backgroundColor: COLORS.surfaceAlt,
+  },
   langChipActive: { backgroundColor: COLORS.primary, borderColor: COLORS.primary },
-  langChipText: { fontFamily: FONTS.semiBold, fontSize: 12, color: COLORS.textSecondary },
+  langChipText: { fontFamily: FONTS.semiBold, ...TYPO.small, color: COLORS.textSecondary },
   langChipTextActive: { color: COLORS.white },
   otpRow: { flexDirection: 'row', alignItems: 'center', gap: 8, flexWrap: 'wrap' },
   otpInput: { flex: 1, minWidth: 90 },
   docRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: 8 },
-  docActions: { flexDirection: 'row', gap: 10, flexWrap: 'wrap' },
+  docActions: { flexDirection: 'row', gap: SPACING.md, flexWrap: 'wrap' },
   simCompareRow: { flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 6 },
-  compareBox: { backgroundColor: COLORS.surfaceAlt, borderRadius: RADIUS.md, padding: SPACING.md, gap: 6, marginTop: 8 },
-  compareTitle: { fontFamily: FONTS.bold, color: COLORS.text },
-  profileStatusRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 6 },
-  profileStatusLabel: { fontFamily: FONTS.semiBold, color: COLORS.textSecondary },
-  qrWrap: { alignItems: 'center', gap: 12 },
+  compareBox: {
+    backgroundColor: COLORS.surfaceAlt,
+    borderRadius: RADIUS.lg,
+    padding: SPACING.lg,
+    gap: 8,
+    marginTop: 8,
+    borderWidth: 1,
+    borderColor: COLORS.borderLight,
+  },
+  compareTitle: { fontFamily: FONTS.bold, ...TYPO.body, color: COLORS.text },
+  profileStatusRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 },
+  profileStatusLabel: { fontFamily: FONTS.semiBold, ...TYPO.small, color: COLORS.textSecondary, letterSpacing: 0.3, textTransform: 'uppercase' },
+  qrWrap: { alignItems: 'center', gap: SPACING.md, padding: SPACING.lg, backgroundColor: COLORS.surfaceAlt, borderRadius: RADIUS.lg, borderWidth: 1, borderColor: COLORS.borderLight },
+  // Simulation — sélecteur type crédit
+  creditTypeScroll: { gap: SPACING.sm, paddingVertical: 4, paddingRight: SPACING.sm },
+  creditTypeChip: {
+    width: 148,
+    padding: SPACING.md,
+    borderRadius: RADIUS.lg,
+    borderWidth: 1.5,
+    borderColor: COLORS.border,
+    backgroundColor: COLORS.surfaceAlt,
+    gap: 4,
+  },
+  creditTypeChipActive: { borderColor: COLORS.primary, backgroundColor: COLORS.primaryMuted },
+  creditTypeChipText: { fontFamily: FONTS.semiBold, ...TYPO.small, color: COLORS.text },
+  creditTypeChipTextActive: { color: COLORS.primary },
+  creditTypeChipRate: { fontFamily: FONTS.bold, ...TYPO.caption, color: COLORS.textSecondary },
+  estimateActionWrap: { marginTop: SPACING.lg, marginBottom: SPACING.sm },
+  // Documents — cartes
+  docSectionLabel: {
+    fontFamily: FONTS.semiBold,
+    ...TYPO.caption,
+    color: COLORS.textSecondary,
+    letterSpacing: 0.5,
+    textTransform: 'uppercase',
+    marginTop: SPACING.sm,
+    marginBottom: SPACING.sm,
+  },
+  docTypeGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: SPACING.sm },
+  docTypeCard: {
+    width: '48%',
+    flexGrow: 1,
+    minWidth: 140,
+    padding: SPACING.md,
+    borderRadius: RADIUS.lg,
+    borderWidth: 1.5,
+    borderColor: COLORS.borderLight,
+    backgroundColor: COLORS.surfaceAlt,
+    gap: 6,
+  },
+  docTypeCardActive: { borderColor: COLORS.primary, backgroundColor: COLORS.primaryMuted },
+  docTypeIconWrap: {
+    width: 36,
+    height: 36,
+    borderRadius: RADIUS.sm,
+    backgroundColor: COLORS.primaryMuted,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  docTypeCardTitle: { fontFamily: FONTS.bold, ...TYPO.body, color: COLORS.text },
+  docTypeCardHint: { fontFamily: FONTS.regular, ...TYPO.caption, color: COLORS.textSecondary },
+  docUploadCard: {
+    borderWidth: 1.5,
+    borderColor: COLORS.border,
+    borderStyle: 'dashed',
+    borderRadius: RADIUS.lg,
+    padding: SPACING.lg,
+    alignItems: 'center',
+    justifyContent: 'center',
+    minHeight: 160,
+    backgroundColor: COLORS.inputFill,
+    marginTop: SPACING.sm,
+  },
+  docUploadCardReady: { borderStyle: 'solid', borderColor: COLORS.primary + '50', backgroundColor: COLORS.surface },
+  docUploadPlaceholder: { alignItems: 'center', gap: 8, paddingVertical: SPACING.md },
+  docUploadTitle: { fontFamily: FONTS.semiBold, ...TYPO.body, color: COLORS.text, textAlign: 'center' },
+  docUploadSub: { fontFamily: FONTS.regular, ...TYPO.caption, color: COLORS.textSecondary, textAlign: 'center' },
+  docPreviewImg: { width: '100%', height: 140, borderRadius: RADIUS.md },
+  docPreviewFile: { alignItems: 'center', gap: 8, paddingVertical: SPACING.md },
+  docPreviewFileName: { fontFamily: FONTS.medium, ...TYPO.small, color: COLORS.text, textAlign: 'center', maxWidth: 260 },
+  docDraftMeta: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: SPACING.sm, gap: SPACING.sm },
+  docDraftName: { flex: 1, fontFamily: FONTS.medium, ...TYPO.small, color: COLORS.text },
+  docDraftClear: { fontFamily: FONTS.semiBold, ...TYPO.small, color: COLORS.error },
+  docFileCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: SPACING.md,
+    padding: SPACING.md,
+    borderRadius: RADIUS.lg,
+    borderWidth: 1,
+    borderColor: COLORS.borderLight,
+    backgroundColor: COLORS.surface,
+    borderLeftWidth: 3,
+    borderLeftColor: COLORS.primary,
+  },
+  docFileThumb: { width: 52, height: 52, borderRadius: RADIUS.sm, overflow: 'hidden', backgroundColor: COLORS.surfaceAlt },
+  docFileThumbImg: { width: '100%', height: '100%' },
+  docFileThumbPlaceholder: { flex: 1, width: '100%', height: '100%', alignItems: 'center', justifyContent: 'center' },
+  docFileBody: { flex: 1, gap: 2, minWidth: 0 },
+  docFileTitle: { fontFamily: FONTS.bold, ...TYPO.body, color: COLORS.text, flex: 1 },
+  docDeleteBtn: {
+    width: 36,
+    height: 36,
+    borderRadius: RADIUS.sm,
+    backgroundColor: COLORS.errorBg,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1,
+    borderColor: COLORS.error + '25',
+  },
+  adminDocPreview: {
+    width: '100%',
+    height: 200,
+    borderRadius: RADIUS.md,
+    marginTop: SPACING.sm,
+    backgroundColor: COLORS.surfaceAlt,
+  },
   });
 }

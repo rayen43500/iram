@@ -2,6 +2,7 @@ const CreditType = require('../models/CreditType');
 const CreditRequest = require('../models/CreditRequest');
 const Loan = require('../models/Loan');
 const User = require('../models/User');
+const UserDocument = require('../models/UserDocument');
 const { fn, col, Op } = require('sequelize');
 const { createUserNotification } = require('../utils/notificationService');
 
@@ -24,6 +25,23 @@ async function listAllRequests(req, res) {
       { model: User, attributes: ['id', 'fullName', 'email'], where: q ? { [Op.or]: [{ fullName: { [Op.like]: `%${q}%` } }, { email: { [Op.like]: `%${q}%` } }] } : undefined, required: Boolean(q) },
       { model: CreditType, attributes: ['id', 'name', 'slug', 'annualRate'] },
     ],
+  });
+  return res.json(items);
+}
+
+async function listUserDocuments(req, res) {
+  const userId = Number(req.params.userId);
+  if (!Number.isFinite(userId) || userId <= 0) {
+    return res.status(400).json({ message: 'Identifiant utilisateur invalide' });
+  }
+  const user = await User.findByPk(userId, { attributes: ['id', 'fullName', 'email'] });
+  if (!user) {
+    return res.status(404).json({ message: 'Utilisateur introuvable' });
+  }
+  const items = await UserDocument.findAll({
+    where: { userId },
+    order: [['createdAt', 'DESC']],
+    attributes: ['id', 'userId', 'type', 'fileName', 'mimeType', 'status', 'dataUrl', 'createdAt'],
   });
   return res.json(items);
 }
@@ -215,6 +233,7 @@ async function updateCreditType(req, res) {
 
 module.exports = {
   listAllRequests,
+  listUserDocuments,
   listUsers,
   updateUserRole,
   updateRequestStatus,

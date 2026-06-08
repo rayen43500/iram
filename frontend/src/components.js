@@ -1,6 +1,6 @@
 import React, { useMemo } from 'react';
-import { View, Text, Pressable, StyleSheet } from 'react-native';
-import { COLORS, FONTS, RADIUS, SHADOW, SPACING } from './theme';
+import { View, Text, Pressable, StyleSheet, ActivityIndicator } from 'react-native';
+import { COLORS, FONTS, RADIUS, SPACING, TYPO, createShadows } from './theme';
 
 // ── Status Badge ──
 export function StatusBadge({ status, colors }) {
@@ -20,7 +20,7 @@ export function StatusBadge({ status, colors }) {
   const bg = isOk ? theme.success : isPending ? theme.warning : theme.error;
   const bgLight = isOk ? theme.successBg : isPending ? theme.warningBg : theme.errorBg;
   return (
-    <View style={[styles.badge, { backgroundColor: bgLight }]}> 
+    <View style={[styles.badge, { backgroundColor: bgLight, borderColor: bg + '30' }]}>
       <View style={[styles.badgeDot, { backgroundColor: bg }]} />
       <Text style={[styles.badgeText, { color: bg }]}>{label}</Text>
     </View>
@@ -33,7 +33,11 @@ export function EmptyState({ icon, title, description, colors }) {
   const styles = useMemo(() => createStyles(theme), [theme]);
   return (
     <View style={styles.emptyBox}>
-      {icon ? <Text style={styles.emptyIcon}>{icon}</Text> : null}
+      {icon ? (
+        <View style={styles.emptyIconWrap}>
+          <Text style={styles.emptyIcon}>{icon}</Text>
+        </View>
+      ) : null}
       <Text style={styles.emptyTitle}>{title}</Text>
       <Text style={styles.emptyDesc}>{description}</Text>
     </View>
@@ -51,11 +55,22 @@ export function BottomTabBar({ tabs, active, onPress, colors }) {
         const isActive = active === tab.key;
         const Icon = tab.icon;
         return (
-          <Pressable key={tab.key} style={styles.tabItem} onPress={() => onPress(tab.key)}>
+          <Pressable
+            key={tab.key}
+            style={({ pressed }) => [styles.tabItem, pressed && { opacity: 0.75 }]}
+            onPress={() => onPress(tab.key)}
+          >
             <View style={[styles.tabIconWrap, compactTabs && styles.tabIconWrapCompact, isActive && styles.tabIconWrapActive]}>
-              <Icon size={compactTabs ? 18 : 20} color={isActive ? theme.white : theme.textSecondary} strokeWidth={isActive ? 2.2 : 1.8} />
+              <Icon
+                size={compactTabs ? 19 : 21}
+                color={isActive ? theme.white : theme.textLight}
+                strokeWidth={isActive ? 2.4 : 1.7}
+              />
             </View>
-            <Text style={[styles.tabLabel, compactTabs && styles.tabLabelCompact, isActive && styles.tabLabelActive]}>{tab.label}</Text>
+            <Text style={[styles.tabLabel, compactTabs && styles.tabLabelCompact, isActive && styles.tabLabelActive]}>
+              {tab.label}
+            </Text>
+            {isActive ? <View style={styles.tabIndicator} /> : <View style={styles.tabIndicatorPlaceholder} />}
           </Pressable>
         );
       })}
@@ -67,14 +82,17 @@ export function BottomTabBar({ tabs, active, onPress, colors }) {
 export function KpiCard({ icon, label, value, color, colors }) {
   const theme = colors || COLORS;
   const styles = useMemo(() => createStyles(theme), [theme]);
+  const accent = color || theme.primary;
   const Icon = icon;
   return (
-    <View style={styles.kpiCard}>
-      <View style={[styles.kpiIconWrap, { backgroundColor: (color || theme.secondary) + '15' }]}> 
-        <Icon size={18} color={color || theme.secondary} strokeWidth={2} />
+    <View style={[styles.kpiCard, { borderTopColor: accent }]}>
+      <View style={styles.kpiTop}>
+        <View style={[styles.kpiIconWrap, { backgroundColor: accent + '14' }]}>
+          <Icon size={17} color={accent} strokeWidth={2.2} />
+        </View>
       </View>
       <Text style={styles.kpiLabel}>{label}</Text>
-      <Text style={styles.kpiValue}>{value}</Text>
+      <Text style={styles.kpiValue} numberOfLines={1}>{value}</Text>
     </View>
   );
 }
@@ -90,7 +108,12 @@ export function SectionCard({ children, style, colors }) {
 export function SectionTitle({ children, colors }) {
   const theme = colors || COLORS;
   const styles = useMemo(() => createStyles(theme), [theme]);
-  return <Text style={styles.sectionTitle}>{children}</Text>;
+  return (
+    <View style={styles.sectionTitleRow}>
+      <View style={styles.sectionTitleAccent} />
+      <Text style={styles.sectionTitle}>{children}</Text>
+    </View>
+  );
 }
 
 // ── Primary Button ──
@@ -99,11 +122,19 @@ export function PrimaryButton({ label, onPress, disabled, loading, colors }) {
   const styles = useMemo(() => createStyles(theme), [theme]);
   return (
     <Pressable
-      style={({ pressed }) => [styles.btnPrimary, pressed && { opacity: 0.9, transform: [{ scale: 0.98 }] }, disabled && { opacity: 0.5 }]}
+      style={({ pressed }) => [
+        styles.btnPrimary,
+        pressed && !disabled && styles.btnPressed,
+        disabled && styles.btnDisabled,
+      ]}
       onPress={onPress}
-      disabled={disabled}
+      disabled={disabled || loading}
     >
-      <Text style={styles.btnPrimaryText}>{loading ? '⏳' : ''} {label}</Text>
+      {loading ? (
+        <ActivityIndicator color={theme.white} size="small" />
+      ) : (
+        <Text style={styles.btnPrimaryText}>{label}</Text>
+      )}
     </Pressable>
   );
 }
@@ -114,7 +145,11 @@ export function SecondaryButton({ label, onPress, disabled, colors }) {
   const styles = useMemo(() => createStyles(theme), [theme]);
   return (
     <Pressable
-      style={({ pressed }) => [styles.btnSecondary, pressed && { opacity: 0.85 }, disabled && { opacity: 0.5 }]}
+      style={({ pressed }) => [
+        styles.btnSecondary,
+        pressed && !disabled && { backgroundColor: theme.primaryMuted },
+        disabled && styles.btnDisabled,
+      ]}
       onPress={onPress}
       disabled={disabled}
     >
@@ -136,56 +171,155 @@ export function ChatBubble({ text, isUser, colors }) {
   const styles = useMemo(() => createStyles(theme), [theme]);
   return (
     <View style={[styles.bubble, isUser ? styles.bubbleUser : styles.bubbleBot]}>
+      {!isUser ? <Text style={styles.bubbleSender}>Assistant ATB</Text> : null}
       <Text style={[styles.bubbleText, isUser ? styles.bubbleTextUser : styles.bubbleTextBot]}>{text}</Text>
     </View>
   );
 }
 
 function createStyles(colors) {
+  const SHADOW = createShadows(colors);
   return StyleSheet.create({
-  // Badge
-  badge: { flexDirection: 'row', alignItems: 'center', borderRadius: RADIUS.full, paddingHorizontal: 10, paddingVertical: 5, gap: 5 },
-  badgeDot: { width: 7, height: 7, borderRadius: 4 },
-  badgeText: { fontFamily: FONTS.semiBold, fontSize: 11, letterSpacing: 0.2 },
-  // Empty
-  emptyBox: { alignItems: 'center', padding: SPACING.xxl, gap: 6 },
-  emptyIcon: { fontSize: 32, marginBottom: 4 },
-  emptyTitle: { fontFamily: FONTS.bold, color: colors.text, fontSize: 15 },
-  emptyDesc: { fontFamily: FONTS.regular, color: colors.textSecondary, fontSize: 13, textAlign: 'center' },
-  // Tab bar
-  tabBar: {
-    flexDirection: 'row', backgroundColor: colors.white, borderTopWidth: 1, borderTopColor: colors.borderLight,
-    paddingBottom: 18, paddingTop: 8, ...SHADOW.soft,
-  },
-  tabBarCompact: { paddingBottom: 12, paddingTop: 6 },
-  tabItem: { flex: 1, alignItems: 'center', gap: 3 },
-  tabIconWrap: { width: 36, height: 36, borderRadius: 12, alignItems: 'center', justifyContent: 'center' },
-  tabIconWrapCompact: { width: 32, height: 32, borderRadius: 10 },
-  tabIconWrapActive: { backgroundColor: colors.primary },
-  tabLabel: { fontFamily: FONTS.medium, fontSize: 10, color: colors.textSecondary },
-  tabLabelCompact: { fontSize: 9 },
-  tabLabelActive: { color: colors.primary, fontFamily: FONTS.bold },
-  // KPI
-  kpiCard: { flex: 1, backgroundColor: colors.white, borderRadius: RADIUS.lg, padding: SPACING.lg, gap: 6, ...SHADOW.card },
-  kpiIconWrap: { width: 34, height: 34, borderRadius: 10, alignItems: 'center', justifyContent: 'center' },
-  kpiLabel: { fontFamily: FONTS.medium, fontSize: 12, color: colors.textSecondary },
-  kpiValue: { fontFamily: FONTS.extraBold, fontSize: 17, color: colors.text },
-  // SectionCard
-  sectionCard: { backgroundColor: colors.white, borderRadius: RADIUS.lg, padding: SPACING.lg, gap: SPACING.md, ...SHADOW.card },
-  sectionTitle: { fontFamily: FONTS.bold, fontSize: 17, color: colors.text, marginBottom: 2 },
-  // Buttons
-  btnPrimary: { backgroundColor: colors.primary, borderRadius: RADIUS.md, paddingVertical: 14, alignItems: 'center', ...SHADOW.elevated },
-  btnPrimaryText: { color: colors.white, fontFamily: FONTS.bold, fontSize: 15, letterSpacing: 0.3 },
-  btnSecondary: { borderWidth: 1.5, borderColor: colors.primary, borderRadius: RADIUS.md, paddingVertical: 13, alignItems: 'center', backgroundColor: colors.white },
-  btnSecondaryText: { color: colors.primary, fontFamily: FONTS.bold, fontSize: 14 },
-  // Input
-  inputLabel: { fontFamily: FONTS.semiBold, fontSize: 13, color: colors.text, marginBottom: 4 },
-  // Chat
-  bubble: { maxWidth: '82%', padding: 12, borderRadius: RADIUS.lg, marginBottom: 8 },
-  bubbleUser: { backgroundColor: colors.chatUserBubble, alignSelf: 'flex-end', borderBottomRightRadius: 4 },
-  bubbleBot: { backgroundColor: colors.chatBotBubble, alignSelf: 'flex-start', borderBottomLeftRadius: 4 },
-  bubbleText: { fontFamily: FONTS.regular, fontSize: 14, lineHeight: 20 },
-  bubbleTextUser: { color: colors.white },
-  bubbleTextBot: { color: colors.text },
+    // Badge
+    badge: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      borderRadius: RADIUS.full,
+      paddingHorizontal: 10,
+      paddingVertical: 5,
+      gap: 5,
+      borderWidth: 1,
+    },
+    badgeDot: { width: 6, height: 6, borderRadius: 3 },
+    badgeText: { fontFamily: FONTS.semiBold, ...TYPO.caption, letterSpacing: 0.4, textTransform: 'uppercase' },
+    // Empty
+    emptyBox: { alignItems: 'center', paddingVertical: SPACING.xxl, paddingHorizontal: SPACING.lg, gap: 8 },
+    emptyIconWrap: {
+      width: 56,
+      height: 56,
+      borderRadius: 28,
+      backgroundColor: colors.surfaceAlt,
+      borderWidth: 1,
+      borderColor: colors.borderLight,
+      alignItems: 'center',
+      justifyContent: 'center',
+      marginBottom: 4,
+    },
+    emptyIcon: { fontSize: 26 },
+    emptyTitle: { fontFamily: FONTS.bold, color: colors.text, ...TYPO.subtitle },
+    emptyDesc: { fontFamily: FONTS.regular, color: colors.textSecondary, ...TYPO.small, textAlign: 'center', maxWidth: 280 },
+    // Tab bar
+    tabBar: {
+      flexDirection: 'row',
+      backgroundColor: colors.tabBarBg || colors.surface,
+      borderTopWidth: 1,
+      borderTopColor: colors.borderLight,
+      paddingBottom: 20,
+      paddingTop: 10,
+      ...SHADOW.soft,
+    },
+    tabBarCompact: { paddingBottom: 14, paddingTop: 8 },
+    tabItem: { flex: 1, alignItems: 'center', gap: 2 },
+    tabIconWrap: {
+      width: 40,
+      height: 40,
+      borderRadius: RADIUS.md,
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
+    tabIconWrapCompact: { width: 36, height: 36, borderRadius: RADIUS.sm },
+    tabIconWrapActive: { backgroundColor: colors.primary },
+    tabLabel: { fontFamily: FONTS.medium, fontSize: 10, color: colors.textLight, letterSpacing: 0.2 },
+    tabLabelCompact: { fontSize: 9 },
+    tabLabelActive: { color: colors.primary, fontFamily: FONTS.bold },
+    tabIndicator: { width: 4, height: 4, borderRadius: 2, backgroundColor: colors.primary, marginTop: 2 },
+    tabIndicatorPlaceholder: { width: 4, height: 4, marginTop: 2 },
+    // KPI
+    kpiCard: {
+      flex: 1,
+      backgroundColor: colors.surface,
+      borderRadius: RADIUS.lg,
+      padding: SPACING.lg,
+      gap: 4,
+      borderWidth: 1,
+      borderColor: colors.borderLight,
+      borderTopWidth: 3,
+      ...SHADOW.card,
+    },
+    kpiTop: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
+    kpiIconWrap: { width: 32, height: 32, borderRadius: RADIUS.sm, alignItems: 'center', justifyContent: 'center' },
+    kpiLabel: { fontFamily: FONTS.medium, ...TYPO.small, color: colors.textSecondary, marginTop: 4 },
+    kpiValue: { fontFamily: FONTS.extraBold, fontSize: 16, color: colors.text, letterSpacing: -0.3 },
+    // SectionCard
+    sectionCard: {
+      backgroundColor: colors.surface,
+      borderRadius: RADIUS.lg,
+      padding: SPACING.lg,
+      gap: SPACING.md,
+      borderWidth: 1,
+      borderColor: colors.borderLight,
+      ...SHADOW.card,
+    },
+    sectionTitleRow: { flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: 4 },
+    sectionTitleAccent: { width: 3, height: 18, borderRadius: 2, backgroundColor: colors.primary },
+    sectionTitle: { fontFamily: FONTS.bold, ...TYPO.title, color: colors.text, letterSpacing: -0.2 },
+    // Buttons
+    btnPrimary: {
+      backgroundColor: colors.primary,
+      borderRadius: RADIUS.md,
+      paddingVertical: 15,
+      paddingHorizontal: SPACING.lg,
+      alignItems: 'center',
+      justifyContent: 'center',
+      minHeight: 50,
+      ...SHADOW.elevated,
+    },
+    btnPrimaryText: {
+      color: colors.white,
+      fontFamily: FONTS.bold,
+      ...TYPO.body,
+      letterSpacing: 0.2,
+    },
+    btnSecondary: {
+      borderWidth: 1.5,
+      borderColor: colors.primary,
+      borderRadius: RADIUS.md,
+      paddingVertical: 14,
+      paddingHorizontal: SPACING.lg,
+      alignItems: 'center',
+      justifyContent: 'center',
+      minHeight: 50,
+      backgroundColor: colors.surface,
+    },
+    btnSecondaryText: { color: colors.primary, fontFamily: FONTS.bold, ...TYPO.body },
+    btnPressed: { opacity: 0.92, transform: [{ scale: 0.985 }] },
+    btnDisabled: { opacity: 0.45 },
+    // Input
+    inputLabel: {
+      fontFamily: FONTS.semiBold,
+      ...TYPO.small,
+      color: colors.textSecondary,
+      marginBottom: 6,
+      letterSpacing: 0.3,
+      textTransform: 'uppercase',
+    },
+    // Chat
+    bubble: { maxWidth: '84%', paddingHorizontal: 14, paddingVertical: 11, borderRadius: RADIUS.lg, marginBottom: 10 },
+    bubbleUser: {
+      backgroundColor: colors.chatUserBubble,
+      alignSelf: 'flex-end',
+      borderBottomRightRadius: RADIUS.xs,
+    },
+    bubbleBot: {
+      backgroundColor: colors.chatBotBubble,
+      alignSelf: 'flex-start',
+      borderBottomLeftRadius: RADIUS.xs,
+      borderWidth: 1,
+      borderColor: colors.borderLight,
+    },
+    bubbleSender: { fontFamily: FONTS.semiBold, fontSize: 10, color: colors.primary, marginBottom: 4, letterSpacing: 0.5, textTransform: 'uppercase' },
+    bubbleText: { fontFamily: FONTS.regular, ...TYPO.body },
+    bubbleTextUser: { color: colors.white },
+    bubbleTextBot: { color: colors.text },
   });
 }

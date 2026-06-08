@@ -26,7 +26,7 @@ async function checkEmail(req, res) {
 }
 
 async function register(req, res) {
-  const { accountNumber, cin, firstName, lastName, email, password, confirmPassword, salary = 0 } = req.body;
+  const { accountNumber, cin, firstName, lastName, email, password, confirmPassword, salary = 0, accountType = 'particulier' } = req.body;
   const normalizedAccountNumber = typeof accountNumber === 'string' ? accountNumber.trim() : '';
   const normalizedCin = typeof cin === 'string' ? cin.trim() : '';
   const normalizedFirstName = typeof firstName === 'string' ? firstName.trim() : '';
@@ -88,6 +88,7 @@ async function register(req, res) {
     salary: normalizedSalary,
     balance: normalizedBalance,
     role: 'client',
+    accountType: accountType === 'professionnel' ? 'professionnel' : 'particulier',
     emailVerified: false,
   });
 
@@ -113,6 +114,7 @@ async function register(req, res) {
       fullName: user.fullName,
       email: user.email,
       role: user.role,
+      accountType: user.accountType,
       avatarUrl: user.avatarUrl,
       emailVerified: user.emailVerified,
     },
@@ -179,6 +181,7 @@ async function login(req, res) {
       fullName: user.fullName,
       email: user.email,
       role: user.role,
+      accountType: user.accountType,
       avatarUrl: user.avatarUrl,
       emailVerified: user.emailVerified,
     },
@@ -200,6 +203,7 @@ async function me(req, res) {
     fullName: user.fullName,
     email: user.email,
     role: user.role,
+    accountType: user.accountType,
     salary: user.salary,
     balance: user.balance,
     avatarUrl: user.avatarUrl || null,
@@ -214,13 +218,19 @@ async function me(req, res) {
 }
 
 async function updateProfile(req, res) {
-  const { fullName, avatarUrl, phone, city, profession } = req.body;
+  const { fullName, avatarUrl, phone, city, profession, accountType } = req.body;
   const user = await User.findByPk(req.user.id);
   if (!user) {
     return res.status(404).json({ message: 'Utilisateur introuvable' });
   }
 
   const patches = {};
+
+  if (accountType !== undefined) {
+    if (['particulier', 'professionnel'].includes(accountType)) {
+      patches.accountType = accountType;
+    }
+  }
 
   if (fullName !== undefined) {
     const n = typeof fullName === 'string' ? fullName.trim() : '';
@@ -280,6 +290,7 @@ async function updateProfile(req, res) {
     fullName: user.fullName,
     email: user.email,
     role: user.role,
+    accountType: user.accountType,
     salary: user.salary,
     balance: user.balance,
     avatarUrl: user.avatarUrl || null,

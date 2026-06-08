@@ -50,7 +50,7 @@ async function main() {
   await check('login admin', async () => {
     const r = await req('/auth/login', {
       method: 'POST',
-      body: JSON.stringify({ email: 'admin@bank.local', password: 'Admin@1234' }),
+      body: JSON.stringify({ email: 'admin@atb.com.tn', password: 'Admin@1234' }),
     });
     token = r.token;
     if (!token) throw new Error('token manquant');
@@ -89,7 +89,7 @@ async function main() {
   await check('login client', async () => {
     const r = await req('/auth/login', {
       method: 'POST',
-      body: JSON.stringify({ email: 'client1@bank.local', password: 'Client@1234' }),
+      body: JSON.stringify({ email: 'amine.chaari@gmail.com', password: 'Client@1234' }),
     });
     clientToken = r.token;
     if (!clientToken) throw new Error('token client manquant');

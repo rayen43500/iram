@@ -13,6 +13,7 @@ const User = sequelize.define(
     email: { type: DataTypes.STRING, allowNull: false, unique: true },
     passwordHash: { type: DataTypes.STRING, allowNull: false },
     role: { type: DataTypes.ENUM('client', 'admin'), allowNull: false, defaultValue: 'client' },
+    accountType: { type: DataTypes.ENUM('particulier', 'professionnel'), allowNull: false, defaultValue: 'particulier' },
     salary: { type: DataTypes.FLOAT, allowNull: false, defaultValue: 0 },
     balance: { type: DataTypes.FLOAT, allowNull: false, defaultValue: 0 },
     /** URL distante ou image en data URL (JPEG/PNG) */
