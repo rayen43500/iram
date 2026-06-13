@@ -20,7 +20,7 @@ async function start() {
     console.log('================================================================================');
     for (const u of users) {
       const defaultPwd = u.role === 'admin' ? 'Admin@1234' : 'Client@1234';
-      const typeLabel = u.role === 'admin' ? 'Administrateur' : (u.accountType === 'professionnel' ? 'Professionnel' : 'Particulier');
+      const typeLabel = u.role === 'admin' ? 'Administrateur' : (u.accountType === 'professionnel' ? 'Client Personnel' : 'Client Normal');
       console.log(`- Role: ${u.role.toUpperCase().padEnd(6)} | Type: ${typeLabel.padEnd(14)} | Nom: ${u.fullName.padEnd(20)} | Email: ${u.email.padEnd(30)} | Mdp: ${defaultPwd}`);
     }
     console.log('================================================================================\n');

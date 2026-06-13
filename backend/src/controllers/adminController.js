@@ -73,6 +73,7 @@ async function listUsers(req, res) {
       'fullName',
       'email',
       'role',
+      'accountType',
       'salary',
       'balance',
       'emailVerified',

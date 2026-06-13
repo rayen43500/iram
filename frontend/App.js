@@ -25,6 +25,7 @@ import { DARK_COLORS, LIGHT_COLORS, FONTS, RADIUS, SPACING, TYPO, createShadows 
 import { StatusBadge, EmptyState, BottomTabBar, KpiCard, SectionCard, SectionTitle, PrimaryButton, SecondaryButton, InputLabel, ChatBubble } from './src/components';
 import AtbCreditApplicationForm from './src/AtbCreditApplicationForm';
 import { createInitialAtbForm, validateAtbForm, atbFormToPayload, inferCreditCategory, professionalStatusLabel } from './src/atbCreditForm';
+import { accountTypeLabel, ACCOUNT_TYPE_OPTIONS } from './src/accountType';
 
 const ATB_LOGO = require('./assets/image.png');
 
@@ -191,6 +192,7 @@ export default function App() {
   const [isActionBusy, setIsActionBusy] = useState(false);
   const [isEstimating, setIsEstimating] = useState(false);
   const [isUploadingDoc, setIsUploadingDoc] = useState(false);
+  const [isChatBusy, setIsChatBusy] = useState(false);
   const [editingCreditTypeId, setEditingCreditTypeId] = useState(null);
   const [editingRate, setEditingRate] = useState('');
   const [editingIsActive, setEditingIsActive] = useState(true);
@@ -578,10 +580,11 @@ export default function App() {
       const r = await apiRequest('/auth/login', { method: 'POST', body: JSON.stringify({ email: e, password, deviceName: Constants?.deviceName || Platform.OS }) });
       await saveSessionToken(r.token);
       setUser(r.user); setView(r.user.role === 'admin' ? 'admin' : 'dashboard');
+      const typeLbl = accountTypeLabel(r.user?.accountType, r.user?.role);
       if (!r.user?.emailVerified) {
-        setNotice('Email non verifie. Veuillez le verifier pour activer toutes les fonctions.');
+        setNotice(`Bienvenue — ${typeLbl}. Email non vérifié : vérifiez-le dans Profil.`);
       } else {
-        setNotice(biometricAvailable ? 'Connexion réussie ! Activez la biométrie dans Profil → Sécurité.' : 'Connexion réussie !');
+        setNotice(`Bienvenue — ${typeLbl}. Connexion réussie.`);
       }
       await registerForPushNotifications(r.token);
       resetIdleTimer();
@@ -1504,13 +1507,21 @@ export default function App() {
   }
 
   async function onChat() {
-    const q = chatQuestion.trim(); if (!q) { setError('Écris une question.'); return; }
-    setChatMessages((p) => [...p, { text: q, isUser: true }]); setChatQuestion('');
+    const q = chatQuestion.trim();
+    if (!q) { setError('Écris une question.'); return; }
+    setChatMessages((p) => [...p, { text: q, isUser: true }]);
+    setChatQuestion('');
     try {
-      setError(''); setIsActionBusy(true);
+      setError(''); setIsChatBusy(true);
       const r = await apiRequest('/chatbot', { method: 'POST', body: JSON.stringify({ message: q }) }, token);
-      setChatMessages((p) => [...p, { text: r.answer || 'Aucune réponse.', isUser: false }]);
-    } catch (e) { setChatMessages((p) => [...p, { text: 'Erreur: ' + (e.message || 'Chatbot indisponible.'), isUser: false }]); } finally { setIsActionBusy(false); }
+      const sourceLabel = r.source === 'gemini' ? 'NLP + Gemini' : 'NLP';
+      const meta = r.intent ? `${sourceLabel} · ${r.intent}` : sourceLabel;
+      setChatMessages((p) => [...p, { text: r.answer || 'Aucune réponse.', isUser: false, meta }]);
+    } catch (e) {
+      setChatMessages((p) => [...p, { text: 'Erreur: ' + (e.message || 'Chatbot indisponible.'), isUser: false }]);
+    } finally {
+      setIsChatBusy(false);
+    }
   }
 
   async function onUpdateRequestStatus(id, status, adminComment = '') {
@@ -1759,13 +1770,21 @@ export default function App() {
             <Image source={{ uri: user.avatarUrl }} style={s.headerUserAvatar} />
           ) : null}
           <View style={{ flexShrink: 1 }}>
-            <Text style={s.headerGreet}>
-              {user?.role === 'admin'
-                ? 'Administrateur'
-                : user?.accountType === 'professionnel'
-                ? 'Compte Professionnel'
-                : 'Compte Particulier'}
-            </Text>
+            <View style={s.headerTypeRow}>
+              <View style={[
+                s.headerTypeBadge,
+                user?.role === 'admin' && s.headerTypeBadgeAdmin,
+                user?.accountType === 'professionnel' && user?.role !== 'admin' && s.headerTypeBadgePersonnel,
+              ]}>
+                <Text style={[
+                  s.headerTypeBadgeText,
+                  user?.role === 'admin' && s.headerTypeBadgeTextAdmin,
+                  user?.accountType === 'professionnel' && user?.role !== 'admin' && s.headerTypeBadgeTextPersonnel,
+                ]}>
+                  {accountTypeLabel(user?.accountType, user?.role)}
+                </Text>
+              </View>
+            </View>
             <Text style={[s.headerName, isTiny && { fontSize: 14 }]} numberOfLines={1}>{user?.fullName}</Text>
           </View>
         </View>
@@ -2350,14 +2369,43 @@ export default function App() {
         {/* ── CHATBOT ── */}
         {view === 'chatbot' && (
           <SectionCard style={{ flex: 1 }} {...themed}>
-            <View style={s.chatHeader}><MessageCircle size={20} color={COLORS.primary} /><SectionTitle {...themed}>Assistant ATB</SectionTitle></View>
+            <View style={s.chatHeader}>
+              <MessageCircle size={20} color={COLORS.primary} />
+              <View style={{ flex: 1 }}>
+                <SectionTitle {...themed}>Assistant ATB</SectionTitle>
+                <Text style={s.formHint}>Assistant ATB — analyse NLP (Python)</Text>
+              </View>
+            </View>
             <View style={s.chatZone}>
-              {chatMessages.length === 0 && <EmptyState icon="🤖" title="Bienvenue !" description="Posez vos questions sur les crédits." {...themed} />}
-              {chatMessages.map((m, i) => <ChatBubble key={i} text={m.text} isUser={m.isUser} {...themed} />)}
+              {chatMessages.length === 0 && (
+                <EmptyState
+                  icon="🤖"
+                  title="Bienvenue !"
+                  description="Exemples : « Quels documents pour un crédit ? », « Statut de ma demande », « Simuler un crédit SAYARA »"
+                  {...themed}
+                />
+              )}
+              {chatMessages.map((m, i) => (
+                <ChatBubble key={i} text={m.text} isUser={m.isUser} meta={m.meta} {...themed} />
+              ))}
+              {isChatBusy ? (
+                <View style={s.chatTyping}>
+                  <ActivityIndicator size="small" color={COLORS.primary} />
+                  <Text style={s.formHint}>Analyse en cours…</Text>
+                </View>
+              ) : null}
             </View>
             <View style={s.chatInputRow}>
-              <TextInput style={s.chatInput} value={chatQuestion} onChangeText={setChatQuestion} placeholder="Écrivez votre message…" placeholderTextColor={COLORS.textLight} />
-              <Pressable style={s.chatSendBtn} onPress={onChat} disabled={isActionBusy}>
+              <TextInput
+                style={s.chatInput}
+                value={chatQuestion}
+                onChangeText={setChatQuestion}
+                placeholder="Écrivez votre message…"
+                placeholderTextColor={COLORS.textLight}
+                editable={!isChatBusy}
+                onSubmitEditing={onChat}
+              />
+              <Pressable style={[s.chatSendBtn, isChatBusy && { opacity: 0.5 }]} onPress={onChat} disabled={isChatBusy}>
                 <Send size={18} color={COLORS.white} />
               </Pressable>
             </View>
@@ -2536,7 +2584,7 @@ export default function App() {
                     </View>
                   </View>
                   <Text style={s.listItemSub}>
-                    Compte: {item.accountNumber || '-'} • CIN: {item.cin || '-'} • Email {item.emailVerified ? 'verifie' : 'non verifie'}
+                    {accountTypeLabel(item.accountType, item.role)} • Compte: {item.accountNumber || '-'} • CIN: {item.cin || '-'}
                   </Text>
                   <Text style={s.listItemSub}>
                     Solde: {formatMoney(item.balance)} • Salaire: {formatMoney(item.salary)}
@@ -2661,13 +2709,11 @@ export default function App() {
               <InputLabel {...themed}>Profession</InputLabel>
               <TextInput style={s.input} value={profileProfession} onChangeText={setProfileProfession} placeholder="Profession" placeholderTextColor={COLORS.textLight} />
 
-              <InputLabel {...themed}>Type de compte</InputLabel>
-              <View style={[s.langRow, { marginBottom: 16 }]}>
-                {['particulier', 'professionnel'].map((type) => (
-                  <Pressable key={type} style={[s.langChip, profileAccountType === type && s.langChipActive]} onPress={() => setProfileAccountType(type)}>
-                    <Text style={[s.langChipText, profileAccountType === type && s.langChipTextActive]}>
-                      {type === 'particulier' ? 'Particulier' : 'Professionnel'}
-                    </Text>
+              <InputLabel {...themed}>Type de client</InputLabel>
+              <View style={[s.langRow, { marginBottom: 16, flexWrap: 'wrap' }]}>
+                {ACCOUNT_TYPE_OPTIONS.map(({ value, label }) => (
+                  <Pressable key={value} style={[s.langChip, profileAccountType === value && s.langChipActive]} onPress={() => setProfileAccountType(value)}>
+                    <Text style={[s.langChipText, profileAccountType === value && s.langChipTextActive]}>{label}</Text>
                   </Pressable>
                 ))}
               </View>
@@ -3110,6 +3156,21 @@ function createStyles(COLORS) {
   headerLogo: { width: 36, height: 36, borderRadius: RADIUS.sm },
   headerUserAvatar: { width: 38, height: 38, borderRadius: 19, borderWidth: 2, borderColor: COLORS.borderLight, backgroundColor: COLORS.surfaceAlt },
   headerGreet: { fontFamily: FONTS.medium, ...TYPO.caption, color: COLORS.textSecondary, letterSpacing: 0.4, textTransform: 'uppercase' },
+  headerTypeRow: { marginBottom: 4 },
+  headerTypeBadge: {
+    alignSelf: 'flex-start',
+    backgroundColor: COLORS.surfaceAlt,
+    borderRadius: RADIUS.full,
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+  },
+  headerTypeBadgePersonnel: { backgroundColor: COLORS.primaryMuted, borderColor: COLORS.primary + '40' },
+  headerTypeBadgeAdmin: { backgroundColor: COLORS.warningBg, borderColor: COLORS.warning + '40' },
+  headerTypeBadgeText: { fontFamily: FONTS.bold, ...TYPO.caption, color: COLORS.textSecondary, letterSpacing: 0.3 },
+  headerTypeBadgeTextPersonnel: { color: COLORS.primary },
+  headerTypeBadgeTextAdmin: { color: COLORS.warning },
   headerName: { fontFamily: FONTS.bold, ...TYPO.subtitle, color: COLORS.text },
   headerRight: { flexDirection: 'row', gap: 8 },
   headerIconBtn: {
@@ -3275,6 +3336,7 @@ function createStyles(COLORS) {
     justifyContent: 'center',
     ...SHADOW.elevated,
   },
+  chatTyping: { flexDirection: 'row', alignItems: 'center', gap: 8, paddingVertical: 6, paddingHorizontal: 4 },
   proLead: { fontFamily: FONTS.regular, color: COLORS.textSecondary, ...TYPO.body },
   quickActionRow: { gap: SPACING.md, marginTop: SPACING.sm },
   // Admin layout + sidebar

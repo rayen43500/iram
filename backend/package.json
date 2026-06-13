@@ -8,7 +8,9 @@
     "dev": "nodemon index.js",
     "verify": "node -e \"require('./src/app'); require('./src/routes/authRoutes'); require('./src/routes/adminRoutes'); console.log('backend modules ok')\"",
     "seed": "node src/seed.js",
-    "smoke": "node scripts/smoke-api.js"
+    "smoke": "node scripts/smoke-api.js",
+    "nlp": "cd nlp-service && py -3 -m uvicorn app:app --host 127.0.0.1 --port 5001 --reload",
+    "nlp:setup": "powershell -ExecutionPolicy Bypass -File nlp-service/setup.ps1"
   },
   "keywords": [],
   "author": "",

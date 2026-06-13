@@ -285,94 +285,26 @@ async function seedDatabase({ forceSync = false, skipIfNotEmpty = false, skipCon
   });
 
   const TUNISIAN_CLIENTS = [
-    {
-      email: 'mohamed.trabelsi@gmail.com',
-      firstName: 'Mohamed',
-      lastName: 'Trabelsi',
-      cin: '07451289',
-      accountNumber: '104008123456',
-      profession: "Chef d'entreprise",
-      accountType: 'professionnel',
-      salary: 4500,
-      balance: 12500,
-    },
-    {
-      email: 'youssef.benali@outlook.com',
-      firstName: 'Youssef',
-      lastName: 'Ben Ali',
-      cin: '09124578',
-      accountNumber: '104008123457',
-      profession: 'Commerçant',
-      accountType: 'professionnel',
-      salary: 3200,
-      balance: 7800,
-    },
-    {
-      email: 'fatma.gharbi@gmail.com',
-      firstName: 'Fatma',
-      lastName: 'Gharbi',
-      cin: '08451296',
-      accountNumber: '104008123458',
-      profession: 'Médecin',
-      accountType: 'professionnel',
-      salary: 5800,
-      balance: 15400,
-    },
-    {
-      email: 'amine.chaari@gmail.com',
-      firstName: 'Amine',
-      lastName: 'Chaari',
-      cin: '11024589',
-      accountNumber: '104008123459',
-      profession: 'Ingénieur',
-      accountType: 'particulier',
-      salary: 2800,
-      balance: 4500,
-    },
-    {
-      email: 'nour.mellouli@gmail.com',
-      firstName: 'Nour',
-      lastName: 'Mellouli',
-      cin: '12035689',
-      accountNumber: '104008123460',
-      profession: 'Enseignante',
-      accountType: 'particulier',
-      salary: 2100,
-      balance: 3200,
-    },
-    {
-      email: 'myriam.gueddari@gmail.com',
-      firstName: 'Myriam',
-      lastName: 'Gueddari',
-      cin: '06985214',
-      accountNumber: '104008123461',
-      profession: 'Pharmacienne',
-      accountType: 'professionnel',
-      salary: 4200,
-      balance: 9300,
-    },
-    {
-      email: 'yassine.bouazizi@gmail.com',
-      firstName: 'Yassine',
-      lastName: 'Bouazizi',
-      cin: '05147896',
-      accountNumber: '104008123462',
-      profession: 'Consultant',
-      accountType: 'particulier',
-      salary: 3500,
-      balance: 6200,
-    },
-    {
-      email: 'khaled.khelifi@gmail.com',
-      firstName: 'Khaled',
-      lastName: 'Khelifi',
-      cin: '04896512',
-      accountNumber: '104008123463',
-      profession: 'Avocat',
-      accountType: 'professionnel',
-      salary: 5100,
-      balance: 18200,
-    },
+    { email: 'mohamed.trabelsi@gmail.com', firstName: 'Mohamed', lastName: 'Trabelsi', cin: '07451289', accountNumber: '104008123456', profession: "Chef d'entreprise", accountType: 'professionnel', salary: 4500, balance: 12500, phone: '+21698123456', city: 'Tunis, Lac 1' },
+    { email: 'youssef.benali@outlook.com', firstName: 'Youssef', lastName: 'Ben Ali', cin: '09124578', accountNumber: '104008123457', profession: 'Commerçant', accountType: 'professionnel', salary: 3200, balance: 7800, phone: '+21622334455', city: 'Sfax, Centre-ville' },
+    { email: 'fatma.gharbi@gmail.com', firstName: 'Fatma', lastName: 'Gharbi', cin: '08451296', accountNumber: '104008123458', profession: 'Médecin', accountType: 'professionnel', salary: 5800, balance: 15400, phone: '+21655667788', city: 'Ariana, Raoued' },
+    { email: 'amine.chaari@gmail.com', firstName: 'Amine', lastName: 'Chaari', cin: '11024589', accountNumber: '104008123459', profession: 'Ingénieur', accountType: 'particulier', salary: 2800, balance: 4500, phone: '+21671234567', city: 'Sousse, Khzema' },
+    { email: 'nour.mellouli@gmail.com', firstName: 'Nour', lastName: 'Mellouli', cin: '12035689', accountNumber: '104008123460', profession: 'Enseignante', accountType: 'particulier', salary: 2100, balance: 3200, phone: '+21698765432', city: 'Monastir, Skanes' },
+    { email: 'myriam.gueddari@gmail.com', firstName: 'Myriam', lastName: 'Gueddari', cin: '06985214', accountNumber: '104008123461', profession: 'Pharmacienne', accountType: 'professionnel', salary: 4200, balance: 9300, phone: '+21650111222', city: 'Bizerte, Corniche' },
+    { email: 'yassine.bouazizi@gmail.com', firstName: 'Yassine', lastName: 'Bouazizi', cin: '05147896', accountNumber: '104008123462', profession: 'Consultant IT', accountType: 'particulier', salary: 3500, balance: 6200, phone: '+21620304050', city: 'Tunis, Ennasr' },
+    { email: 'khaled.khelifi@gmail.com', firstName: 'Khaled', lastName: 'Khelifi', cin: '04896512', accountNumber: '104008123463', profession: 'Avocat', accountType: 'professionnel', salary: 5100, balance: 18200, phone: '+21622113344', city: 'Tunis, Lafayette' },
+    { email: 'salma.jebali@yahoo.com', firstName: 'Salma', lastName: 'Jebali', cin: '10345678', accountNumber: '104008123464', profession: 'Architecte', accountType: 'professionnel', salary: 3900, balance: 8700, phone: '+21655443322', city: 'Nabeul, Hammamet' },
+    { email: 'riadh.hammami@gmail.com', firstName: 'Riadh', lastName: 'Hammami', cin: '07894561', accountNumber: '104008123465', profession: 'Fonctionnaire', accountType: 'particulier', salary: 2400, balance: 4100, phone: '+21699887766', city: 'Kairouan' },
+    { email: 'leila.bouhlel@gmail.com', firstName: 'Leila', lastName: 'Bouhlel', cin: '06543219', accountNumber: '104008123466', profession: 'Infirmière', accountType: 'particulier', salary: 2300, balance: 3800, phone: '+21677665544', city: 'Gabès, Jara' },
+    { email: 'hichem.dridi@outlook.com', firstName: 'Hichem', lastName: 'Dridi', cin: '11223344', accountNumber: '104008123467', profession: 'Gérant restaurant', accountType: 'professionnel', salary: 3600, balance: 7200, phone: '+21644556677', city: 'Mahdia, Corniche' },
+    { email: 'sonia.abidi@gmail.com', firstName: 'Sonia', lastName: 'Abidi', cin: '08997766', accountNumber: '104008123468', profession: 'Comptable', accountType: 'particulier', salary: 2600, balance: 5400, phone: '+21666778899', city: 'Ben Arous, Ezzahra' },
+    { email: 'karim.zouari@gmail.com', firstName: 'Karim', lastName: 'Zouari', cin: '05432198', accountNumber: '104008123469', profession: 'Technicien', accountType: 'particulier', salary: 2200, balance: 2900, phone: '+21633445566', city: 'Gafsa, El Gueitar' },
+    { email: 'inès.mansouri@gmail.com', firstName: 'Inès', lastName: 'Mansouri', cin: '06781234', accountNumber: '104008123470', profession: 'Dentiste', accountType: 'professionnel', salary: 6200, balance: 21000, phone: '+21688990011', city: 'La Marsa, Tunis' },
+    { email: 'wassim.ferchichi@gmail.com', firstName: 'Wassim', lastName: 'Ferchichi', cin: '04567891', accountNumber: '104008123471', profession: 'Agent immobilier', accountType: 'professionnel', salary: 3400, balance: 6500, phone: '+21622331100', city: 'Hammam Sousse' },
+    { email: 'marwa.saidi@gmail.com', firstName: 'Marwa', lastName: 'Saidi', cin: '09876543', accountNumber: '104008123472', profession: 'Graphiste', accountType: 'particulier', salary: 1900, balance: 2600, phone: '+21655112233', city: 'Tunis, Manar' },
+    { email: 'omar.jlassi@gmail.com', firstName: 'Omar', lastName: 'Jlassi', cin: '03214567', accountNumber: '104008123473', profession: 'Retraité', accountType: 'particulier', salary: 1800, balance: 12000, phone: '+21677441122', city: 'Kélibia' },
+    { email: 'hela.chebbi@gmail.com', firstName: 'Hela', lastName: 'Chebbi', cin: '07654321', accountNumber: '104008123474', profession: 'Gérante boutique', accountType: 'professionnel', salary: 3100, balance: 5900, phone: '+21699663322', city: 'Tozeur, Centre' },
+    { email: 'bilel.othmani@gmail.com', firstName: 'Bilel', lastName: 'Othmani', cin: '06129876', accountNumber: '104008123475', profession: 'Électricien', accountType: 'particulier', salary: 2000, balance: 3100, phone: '+21622889900', city: 'Médenine' },
   ];
 
   for (let i = 0; i < TUNISIAN_CLIENTS.length; i += 1) {
@@ -393,10 +325,20 @@ async function seedDatabase({ forceSync = false, skipIfNotEmpty = false, skipCon
         salary: clientData.salary,
         balance: clientData.balance,
         profession: clientData.profession,
+        phone: clientData.phone || '',
+        city: clientData.city || '',
       },
     });
 
     if (!wasCreated) {
+      await client.update({
+        phone: clientData.phone || client.phone,
+        city: clientData.city || client.city,
+        profession: clientData.profession || client.profession,
+        accountType: clientData.accountType,
+        salary: clientData.salary,
+        balance: clientData.balance,
+      });
       continue;
     }
 
@@ -434,6 +376,7 @@ async function seedDatabase({ forceSync = false, skipIfNotEmpty = false, skipCon
 
   console.log('Seed termine.');
   console.log('Admin:', admin.email, 'password: Admin@1234');
+  console.log(`Clients tunisiens: ${TUNISIAN_CLIENTS.length} (Client Normal / Client Personnel)`);
   return { seeded: true };
 }
 

@@ -10,6 +10,7 @@
     "backend:smoke": "npm run smoke --prefix backend",
     "frontend": "npm run dev --prefix frontend",
     "verify": "npm run verify --prefix backend && npm run verify --prefix frontend",
-    "verify:smoke": "npm run smoke --prefix backend"
+    "verify:smoke": "npm run smoke --prefix backend",
+    "nlp": "npm run nlp --prefix backend"
   }
 }

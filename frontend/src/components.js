@@ -166,13 +166,14 @@ export function InputLabel({ children, colors }) {
 }
 
 // ── Chat Bubble ──
-export function ChatBubble({ text, isUser, colors }) {
+export function ChatBubble({ text, isUser, meta, colors }) {
   const theme = colors || COLORS;
   const styles = useMemo(() => createStyles(theme), [theme]);
   return (
     <View style={[styles.bubble, isUser ? styles.bubbleUser : styles.bubbleBot]}>
       {!isUser ? <Text style={styles.bubbleSender}>Assistant ATB</Text> : null}
       <Text style={[styles.bubbleText, isUser ? styles.bubbleTextUser : styles.bubbleTextBot]}>{text}</Text>
+      {!isUser && meta ? <Text style={styles.bubbleMeta}>{meta}</Text> : null}
     </View>
   );
 }
@@ -321,5 +322,6 @@ function createStyles(colors) {
     bubbleText: { fontFamily: FONTS.regular, ...TYPO.body },
     bubbleTextUser: { color: colors.white },
     bubbleTextBot: { color: colors.text },
+    bubbleMeta: { fontFamily: FONTS.medium, fontSize: 10, color: colors.textLight, marginTop: 6, letterSpacing: 0.2 },
   });
 }

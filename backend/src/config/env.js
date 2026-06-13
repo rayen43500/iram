@@ -49,4 +49,7 @@ module.exports = {
   smtpFrom: process.env.SMTP_FROM || 'no-reply@bank.local',
   otpExpiresMinutes: Number(process.env.OTP_EXPIRES_MINUTES || 10),
   expoPushEnabled: (process.env.EXPO_PUSH_ENABLED || 'false').toLowerCase() === 'true',
+  nlpServiceUrl: process.env.NLP_SERVICE_URL || 'http://127.0.0.1:5001',
+  nlpServiceTimeoutMs: Number(process.env.NLP_SERVICE_TIMEOUT_MS || 12000),
+  geminiApiKey: process.env.GEMINI_API_KEY || '',
 };
